@@ -16,6 +16,7 @@
   <ItemGroup>
     <Compile Include="SmokeTests.cs" />
     <Compile Include="MediaSessionSnapshotTests.cs" />
+    <Compile Include="MediaPropertyMapperTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
