@@ -18,6 +18,7 @@
     <Compile Include="MediaSessionSnapshotTests.cs" />
     <Compile Include="MediaPropertyMapperTests.cs" />
     <Compile Include="ThumbnailDecoderTests.cs" />
+    <Compile Include="AsyncRelayCommandTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
