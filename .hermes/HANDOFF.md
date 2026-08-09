@@ -8,14 +8,14 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 
 ---
 
-## Status: Tasks 1, 2 & 3 complete, Tasks 4-14 pending
+## Status: Tasks 1, 2, 3 & 4 complete, Tasks 5-14 pending
 
 | # | Task | Status | Commit |
 |---|------|--------|--------|
 | 1 | Establish clean solution baseline (TFM, .gitignore, test project) | ✅ done | `13f85c1` |
 | 2 | Define media state and transport contracts (Models, IMediaControllerService) | ✅ done | `f3f96aa` |
 | 3 | Implement SMTC session discovery and event lifecycle | ✅ done | `9869f15` |
-| 4 | Decode album artwork safely | 🔴 not started | — |
+| 4 | Decode album artwork safely | ✅ done | `82131e0` |
 | 5 | Implement command dispatch and capability gating | 🔴 not started | — |
 | 6 | Build view model and progress interpolation | 🔴 not started | — |
 | 7 | Construct the floating popover UI | 🔴 not started | — |
@@ -84,7 +84,7 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 - `Services/MediaControllerService.cs` — `IMediaControllerService` implementation. Owns the `GlobalSystemMediaTransportControlsSessionManager`, wires the three property-grouped event subscriptions on each session, centralises session replacement behind a generation counter, marshals every WinRT callback through the captured `SynchronizationContext` before publishing, and exposes command methods (`TogglePlayPauseAsync` / `PreviousAsync` / `StopAsync` / `NextAsync`) that forward to the active session.
 - `tests/TrackDot.Tests/MediaPropertyMapperTests.cs` — 20 tests covering all six SMTC playback statuses, capability flag combinations, every mapper input null-case, and the timeline-baseline fallback rules.
 
-**Total tests:** 36 (3 smoke + 13 snapshot + 20 mapper). All pass.
+**Total tests:** 48 (3 smoke + 13 snapshot + 20 mapper + 12 decoder). All pass.
 
 **Gotchas the next session needs to know:**
 
@@ -100,65 +100,50 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 
 6. **The service uses `Volatile.Read` / `Volatile.Write` on `_currentSnapshot` and `_generation`** so the dispatcher-thread publish path and the worker-thread generation check stay coherent. **Do not remove these** — the handoff's "stale async result" hazard is real and the generation check only works if the reads are volatile.
 
-7. **The artwork decode in `DecodeArtworkAsync` is currently a stub** returning `Task<ImageSource?>(null)`. Task 4 will replace it with the real `ThumbnailDecoder` pipeline. The signature is already correct (`Task<ImageSource?>`) so Task 4 can plug in directly.
+7. **The artwork decode in `DecodeArtworkAsync` is now a real `ThumbnailDecoder` call** (Task 4). The signature is still `Task<ImageSource?>` so downstream code is unchanged. The decoder returns `null` for every failure mode — null stream, throwing delegate, faulted task, pre-cancelled token, malformed bytes, WinRT COM errors. The controller service relies on this contract; do not let the decoder start throwing.
 
 8. **Lifecycle tests for the service itself are deferred to Task 11** (per the handoff plan). `InternalsVisibleTo TrackDot.Tests` is already wired in `TrackDot.csproj`, so the service can be exercised directly from tests when Task 11 lands.
 
+### Task 4 — ThumbnailDecoder (commit `82131e0`)
+
+**Files created:**
+- `Services/ThumbnailDecoder.cs` — static class. `public const int MaxPixelSize = 256`. Public method `DecodeAsync(Func<Task<Stream>>, CancellationToken)` returns `Task<ImageSource?>`. Aspect-preserving clamp via private `ComputeScaledSize` (internal-shim `ComputeScaledSizeForTest` exposes it to tests).
+- `tests/TrackDot.Tests/ThumbnailDecoderTests.cs` — 12 tests covering `MaxPixelSize` policy (positive power-of-two), `ComputeScaledSize` aspect-preserving clamp (landscape/portrait/square/small), and `DecodeAsync` failure contract (null stream, throwing delegate, faulted task, pre-cancelled token never invokes delegate, malformed bytes swallowed by catch-all, public-return-type smoke test).
+
+**Files modified:**
+- `Services/MediaControllerService.cs` — `DecodeArtworkAsync(object? thumbnail)` no longer stubs. Bridges `IRandomAccessStreamReference` → `IRandomAccessStreamWithContentType` → managed `Stream` via a small adapter (`OpenThumbnailAsManagedStreamAsync`) and delegates the decode to `ThumbnailDecoder.DecodeAsync`. Added `using System.IO;`.
+- `tests/TrackDot.Tests/TrackDot.Tests.csproj` — added `<Compile Include="ThumbnailDecoderTests.cs" />`.
+
+**Gotchas the next session needs to know:**
+
+1. **`SoftwareBitmap.CopyTo(WriteableBitmap)` does NOT exist in the CsWinRT projection** for the .NET 6 SDK ref (`Microsoft.Windows.SDK.NET.Ref` 10.0.19041.x). It exists in C++/WinRT only. The handoff's Task-4 plan was wrong on this point — the suggested pipeline `SoftwareBitmap → UWP WriteableBitmap` would not compile. The working path is `SoftwareBitmap.CopyToBuffer(Windows.Storage.Streams.Buffer)` → `buffer.AsStream()` → managed `byte[]` → `WPF WriteableBitmap.BackBuffer` via `Marshal.Copy`.
+
+2. **`Windows.UI.Xaml.Media.Imaging.WriteableBitmap` is not usable as a decode target.** It only exposes a `(int, int)` ctor and a `PixelBuffer` (`IBuffer`) — no DPI, no PixelFormat. There is no way to construct one that matches the SMTC pixel data. Use the WPF-native `System.Windows.Media.Imaging.WriteableBitmap(width, height, 96, 96, PixelFormats.Pbgra32, null)` and write to `BackBuffer` directly.
+
+3. **The `BitmapDecoder` symbol is ambiguous in `UseWPF` projects.** `System.Windows.Media.Imaging.BitmapDecoder` (WPF) and `Windows.Graphics.Imaging.BitmapDecoder` (WinRT) collide when both namespaces are imported. The decoder file aliases the WinRT one: `using WinRTBitmapDecoder = Windows.Graphics.Imaging.BitmapDecoder;`. Do not remove the alias.
+
+4. **CsWinRT runtime classes have no public `Dispose`/`Close`.** `BitmapDecoder`, `SoftwareBitmap`, and `Windows.Storage.Streams.Buffer` all implement `IClosable.Dispose` internally but the projection does not expose it to C# code. They are GC-managed. The decoder does not attempt explicit cleanup. `System.Windows.Media.Imaging.WriteableBitmap` IS a managed object — `Lock`/`Unlock` must be paired (try/finally).
+
+5. **`SoftwareBitmap.CopyToBuffer(IBuffer)` requires `Length` set.** A freshly constructed `new Buffer((uint)bufferSize)` has `Length == 0` and `CopyToBuffer` will refuse to write. Set `Length = (uint)bufferSize` before calling.
+
+6. **The xUnit runner cannot exercise the live `BitmapDecoder.CreateAsync` pipeline.** WinRT COM activation only initialises inside a UI process. The unit tests cover the failure contract (`openStream` throws → null) and the clamp math (`ComputeScaledSize`) but the happy-path decode is verified manually via `docs/SMOKE_TEST.md` during Task 12. Do not attempt to add a "decode a real PNG" test — it will throw `COMException` on the test runner.
+
+7. **The decode is intentionally fire-and-forget at the contract level.** `MediaControllerService` swallows all exceptions around `DecodeArtworkAsync` (the surrounding `RefreshMediaPropertiesAsync` already has a top-level catch). The decoder also swallows internally as a defence-in-depth. If you add logging, do it in `MediaControllerService` — the decoder stays a pure mapping from `Stream → ImageSource`.
+
 ---
 
-## Next: Task 4 — Decode album artwork safely
+## Next: Task 5 — Implement command dispatch and capability gating
 
-**Plan said (verbatim):**
-> Implement `ThumbnailDecoder` using `RandomAccessStreamReference.OpenReadAsync()` → `BitmapDecoder` → `SoftwareBitmap` → `BitmapSource` (`WriteableBitmap` if `SoftwareBitmap` direct conversion is blocked). Decode off the UI thread, clamp to a max pixel size (256x256), freeze the result, dispose intermediate buffers, and return `null` (not throw) on missing/unsupported input.
+The IMediaControllerService command methods (`TogglePlayPauseAsync`, `PreviousAsync`, `StopAsync`, `NextAsync`) already exist on the service and forward to the active session. Task 5 wraps them in an `ICommand` (`Commands/AsyncRelayCommand.cs`) so the view-model layer can bind XAML buttons, and adds capability gating so disabled transport buttons reflect `TransportCapabilities` without bouncing through the controller.
 
-**Files to create:**
-- `Services/ThumbnailDecoder.cs` — the artwork decode pipeline.
-- `tests/TrackDot.Tests/ThumbnailDecoderTests.cs` — tests for the decoder.
+Key inputs to look up:
+- `Commands/AsyncRelayCommand.cs` — a small `ICommand` impl with `CanExecute` and an async `Execute` (uses `Task` not `void`; never throws; raises `CanExecuteChanged` after execute so the UI re-evaluates). Will live alongside the view model in Task 6.
+- `Services/IMediaControllerService.cs` — the four methods to wrap. Note the service already swallows command exceptions internally.
+- `Models/TransportCapabilities.cs` — the `CanPlay/CanPause/CanStop/CanGoPrevious/CanGoNext` flags that drive `CanExecute`.
 
-**Concrete steps the next session should follow:**
+The plan calls for unit tests around `AsyncRelayCommand` (CanExecute changes after async execution, exception swallowed, multiple subscribers). Follow the Task 3 / Task 4 pattern: pure class, no WinRT, exercises every code path.
 
-1. **Verify the artwork pipeline API surface against the installed SDK ref.** The relevant types are:
-   - `Windows.Storage.Streams.IRandomAccessStreamReference` (interface, no constructor).
-   - `Windows.Storage.Streams.RandomAccessStreamReference` (factory class — `CreateFromFile`, `CreateFromUri`, etc.).
-   - `Windows.Graphics.Imaging.BitmapDecoder` (static `CreateAsync` overloads).
-   - `Windows.Graphics.Imaging.SoftwareBitmap` (has `BitmapPixelFormat`, `BitmapAlphaMode`, `SoftwareBitmap.CopyTo(WriteableBitmap)` etc.).
-   - `Windows.UI.Xaml.Media.Imaging.WriteableBitmap` — note this is the UWP type, not `System.Windows.Media.Imaging.WriteableBitmap`. WPF binding works because both are `ImageSource`-compatible at the WPF layer, but the type lives in `Windows.UI.Xaml.Media.Imaging`.
-
-   Verify exact member names by grepping `C:/Users/Herlandro Ando/.nuget/packages/microsoft.windows.sdk.net.ref/10.0.19041.31/lib/net6.0/Microsoft.Windows.SDK.NET.xml` for `BitmapDecoder`, `SoftwareBitmap`, `RandomAccessStreamReference`. The same naming pitfall as Task 3 (typos, runtime-class vs record) applies.
-
-2. **Draft tests first (RED).** The plan called for "ThumbnailDecoder tests for null input → null output, oversized input → clamped output, valid input → frozen `ImageSource`." The decoder should be a pure method so the tests run without a live SMTC session.
-
-   Note: the input to the decoder is an `IRandomAccessStreamReference` runtime class — **same testability problem as Task 3's playback controls**. Either:
-   - (a) Take `IRandomAccessStreamReference` directly and have tests supply a fake via reflection on `IPropertyValue`-backed streams (heavyweight).
-   - (b) Take a `Func<Task<Stream>>` that opens the thumbnail, with tests providing a `MemoryStream` lambda. Cleaner — pick this unless the plan explicitly requires the runtime class.
-
-3. **Implement the decoder.**
-   - Signature: `public static async Task<ImageSource?> DecodeAsync(Func<Task<Stream>> openStream, CancellationToken ct = default)`.
-   - Open the stream, create `BitmapDecoder.CreateAsync(stream.AsRandomAccessStream())`.
-   - Get `SoftwareBitmap` via `decoder.GetSoftwareBitmapAsync()` or `decoder.GetPixelDataAsync()` + `SoftwareBitmap.CreateCopyFromBuffer(...)`.
-   - If width or height exceeds 256, scale by setting `decoder.Scale` or applying `BitmapTransform.ScaledWidth/ScaledHeight`.
-   - Convert `SoftwareBitmap` to a WPF `BitmapSource`: `SoftwareBitmap.CopyTo(WriteableBitmap)` works on Windows 10+, OR use `new WriteableBitmap(softwareBitmap.PixelWidth, softwareBitmap.PixelHeight, 96, 96, PixelFormats.Bgra32, null)` + `softwareBitmap.CopyTo(writeableBitmap)`. Verify the working form during build.
-   - **Freeze the result** (`bitmap.Freeze()`) before returning — the UI thread owns all `ImageSource` instances and a frozen one is thread-safe to assign from any thread.
-   - **Wrap every step in try/catch** — malformed thumbnails should produce `null`, never throw. This is the contract the mapper already assumes.
-
-4. **Wire into `MediaControllerService`.** Replace the stub:
-   ```csharp
-   private static Task<ImageSource?> DecodeArtworkAsync(object? thumbnail)
-       => Task.FromResult<ImageSource?>(null);
-   ```
-   with a real call. The `IRandomAccessStreamReference` parameter from `MediaProperties.Thumbnail` becomes:
-   ```csharp
-   var artwork = thumbnail is null
-       ? null
-       : await ThumbnailDecoder.DecodeAsync(
-           () => ((IRandomAccessStreamReference)thumbnail).OpenReadAsync().AsTask().ContinueWith(t => t.Result.AsStreamForRead()),
-           ct).ConfigureAwait(true);
-   ```
-   Wrap in `try/catch` and return `null` on any failure (the service already swallows decoder errors).
-
-5. **Build + test:** `dotnet build TrackDot.sln -c Debug --no-restore` then `dotnet test TrackDot.sln -c Debug --no-build --filter ThumbnailDecoderTests`. Both must succeed. Then run the full suite — should still be 36 + new decoder tests green.
-
-**Commit message:** `feat: decode album artwork safely`
+**Commit message:** `feat: command dispatch and capability gating`
 
 ---
 
@@ -171,6 +156,9 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 - **Marshalling `ImageSource` is dangerous.** The WPF UI thread owns all `ImageSource` instances. Decode happens in Task 4 (`ThumbnailDecoder`) and the result is `Freeze()`'d before publishing — frozen `BitmapSource` is thread-safe.
 - **WinRT runtime classes have no public constructors.** Every mapper/decoder that wants to be testable must accept a record / delegate / stream rather than the runtime class. This pattern is established in Task 3 and applies again in Task 4.
 - **The `_context.Post` callback may be dropped** if the dispatcher is shutting down. Treat dropped callbacks as "silently no-op" rather than retrying — the service is being torn down anyway.
+- **`BitmapDecoder` is ambiguous in WPF projects.** Both `System.Windows.Media.Imaging.BitmapDecoder` and `Windows.Graphics.Imaging.BitmapDecoder` exist. Use a `using Xxx = Windows.Graphics.Imaging.BitmapDecoder;` alias when both namespaces are imported.
+- **WinRT runtime classes have no public `Dispose`/`Close` in the CsWinRT projection.** `BitmapDecoder`, `SoftwareBitmap`, and `Buffer` all implement `IClosable` but the projection does not surface it to C#. They are GC-managed. Don't try to call `.Dispose()` on them.
+- **`SoftwareBitmap.CopyToBuffer(Buffer)` requires `Length` set on the buffer.** A fresh `new Buffer(capacity)` has `Length == 0` and the call refuses to write.
 
 ---
 
@@ -197,7 +185,8 @@ TrackDot/
 ├── Services/
 │   ├── IMediaControllerService.cs
 │   ├── MediaControllerService.cs
-│   └── MediaPropertyMapper.cs
+│   ├── MediaPropertyMapper.cs
+│   └── ThumbnailDecoder.cs
 ├── TrackDot.csproj
 ├── TrackDot.sln
 ├── TrackDot.csproj.user    (untouched)
@@ -205,21 +194,21 @@ TrackDot/
     ├── MediaPropertyMapperTests.cs
     ├── MediaSessionSnapshotTests.cs
     ├── SmokeTests.cs
+    ├── ThumbnailDecoderTests.cs
     └── TrackDot.Tests.csproj
 ```
 
 Need to be created (planned, do not yet exist):
 - `Models/` complete (no more needed)
-- `Services/ThumbnailDecoder.cs` (Task 4)
-- `Services/ITrayIconService.cs`, `TrayIconService.cs` (Task 8)
-- `Services/WindowPlacementService.cs` (Task 7)
-- `Services/IStartupService.cs`, `StartupService.cs` (Task 10)
 - `Commands/AsyncRelayCommand.cs` (Task 5)
 - `ViewModels/MainViewModel.cs`, `SettingsViewModel.cs` (Tasks 6, 10)
 - `Converters/TimeSpanTextConverter.cs` (Task 6)
+- `ProgressInterpolator` lives inside `Services/` (Task 6)
+- `Services/WindowPlacementService.cs` (Task 7)
+- `Services/ITrayIconService.cs`, `TrayIconService.cs` (Task 8)
+- `Services/IStartupService.cs`, `StartupService.cs` (Task 10)
 - `SettingsWindow.xaml` + `.cs` (Task 10)
 - `Assets/AppIcon.ico`, `Assets/PlaceholderArt.png` (Tasks 4, 7)
-- `ProgressInterpolator` lives inside `Services/` (Task 6)
 
 ---
 
@@ -233,7 +222,7 @@ dotnet test TrackDot.sln -c Debug --no-build
 dotnet build TrackDot.sln -c Release
 ```
 
-Current `dotnet test` status: 36 / 36 passing (3 smoke + 13 snapshot + 20 mapper).
+Current `dotnet test` status: 48 / 48 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder).
 Current `dotnet build` status: Debug and Release both build with 0 warnings, 0 errors.
 
 ---
