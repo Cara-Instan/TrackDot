@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <Compile Include="SmokeTests.cs" />
+    <Compile Include="MediaSessionSnapshotTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
