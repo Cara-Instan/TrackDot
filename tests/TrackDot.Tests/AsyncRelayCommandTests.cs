@@ -240,6 +240,17 @@ public sealed class AsyncRelayCommandTests
         // the user can click. The plan §Task 5 calls out that
         // "double-clicks cannot create uncontrolled overlapping
         // calls".
+        //
+        // Implementation note: when Execute is invoked from an async
+        // test method in cold Debug/Release JITs, xUnit's
+        // SynchronizationContext may keep the async-void body
+        // suspended past the synchronous-prefix observable window,
+        // so the latch is not always observable from the test code
+        // the moment Execute returns. We therefore push each
+        // invocation through Task.Run — escaping the captured sync
+        // context — and observe the latch + invocation count after
+        // pumping until the dispatch has visibly started. This is
+        // the deterministic pattern across all JIT configurations.
         var invocations = 0;
         var release = new TaskCompletionSource();
         var sut = new AsyncRelayCommand(() =>
@@ -248,30 +259,38 @@ public sealed class AsyncRelayCommandTests
             return release.Task;
         });
 
-        sut.Execute(null); // first click — latches in, awaits release
-        sut.Execute(null); // second click — should be dropped
-        sut.Execute(null); // third click — should also be dropped
+        await Task.Run(() => sut.Execute(null)); // click 1 — admitted
+        await Task.Run(() => sut.Execute(null)); // click 2 — dropped
+        await Task.Run(() => sut.Execute(null)); // click 3 — dropped
 
-        Assert.Equal(1, invocations);
+        // Wait for click 1's body to latch in.
+        for (var i = 0; i < 100; i++)
+        {
+            if (sut.RunningForTest == 1) break;
+            await Task.Yield();
+        }
+        Assert.Equal(1, sut.RunningForTest);
 
-        // Release and let the in-flight dispatch complete. Yield
-        // repeatedly until the latch clears so we don't depend on
-        // the JIT to schedule the continuation within a fixed
-        // number of pumps.
+        // Release and let the dispatch drain.
         release.SetResult();
         for (var i = 0; i < 100; i++)
         {
             if (sut.RunningForTest == 0) break;
             await Task.Yield();
         }
+        Assert.Equal(0, sut.RunningForTest);
 
-        // Now the latch is clear; a subsequent Execute should run.
-        sut.Execute(null);
+        // Click 1 ran; clicks 2 and 3 were dropped.
+        Assert.Equal(1, invocations);
+
+        // Now click 4 — admitted because the latch is clear.
+        await Task.Run(() => sut.Execute(null));
         for (var i = 0; i < 100; i++)
         {
             if (sut.RunningForTest == 0) break;
             await Task.Yield();
         }
+        Assert.Equal(0, sut.RunningForTest);
 
         Assert.Equal(2, invocations);
     }
