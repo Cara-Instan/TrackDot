@@ -8,13 +8,13 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 
 ---
 
-## Status: Tasks 1 & 2 complete, Tasks 3-14 pending
+## Status: Tasks 1, 2 & 3 complete, Tasks 4-14 pending
 
 | # | Task | Status | Commit |
 |---|------|--------|--------|
 | 1 | Establish clean solution baseline (TFM, .gitignore, test project) | ✅ done | `13f85c1` |
 | 2 | Define media state and transport contracts (Models, IMediaControllerService) | ✅ done | `f3f96aa` |
-| 3 | Implement SMTC session discovery and event lifecycle | 🔴 not started | — |
+| 3 | Implement SMTC session discovery and event lifecycle | ✅ done | `9869f15` |
 | 4 | Decode album artwork safely | 🔴 not started | — |
 | 5 | Implement command dispatch and capability gating | 🔴 not started | — |
 | 6 | Build view model and progress interpolation | 🔴 not started | — |
@@ -77,46 +77,88 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 - `Services/IMediaControllerService.cs` — `IAsyncDisposable` interface with `Current`, `SnapshotChanged` event, `InitializeAsync`, `TogglePlayPauseAsync`, `PreviousAsync`, `StopAsync`, `NextAsync`.
 - `tests/TrackDot.Tests/MediaSessionSnapshotTests.cs` — 13 tests covering Empty defaults, capability flags, theory tests for all capability states, immutability, and safe-to-bind semantics.
 
-**Total tests:** 16 (3 smoke + 13 snapshot). All pass.
+### Task 3 — SMTC session discovery and event lifecycle (commit `9869f15`)
+
+**Files created:**
+- `Services/MediaPropertyMapper.cs` — pure static class mapping SMTC enums and shape records into `MediaSessionSnapshot` / `PlaybackSnapshot` / `TransportCapabilities`. Consumes small data shapes (`SessionShape`, `MediaPropertiesShape`, `PlaybackInfoShape`, `ControlsShape`, `TimelineShape`) instead of WinRT runtime classes — the SMTC playback-controls class has no public constructor and read-only properties, so it cannot be substituted in tests.
+- `Services/MediaControllerService.cs` — `IMediaControllerService` implementation. Owns the `GlobalSystemMediaTransportControlsSessionManager`, wires the three property-grouped event subscriptions on each session, centralises session replacement behind a generation counter, marshals every WinRT callback through the captured `SynchronizationContext` before publishing, and exposes command methods (`TogglePlayPauseAsync` / `PreviousAsync` / `StopAsync` / `NextAsync`) that forward to the active session.
+- `tests/TrackDot.Tests/MediaPropertyMapperTests.cs` — 20 tests covering all six SMTC playback statuses, capability flag combinations, every mapper input null-case, and the timeline-baseline fallback rules.
+
+**Total tests:** 36 (3 smoke + 13 snapshot + 20 mapper). All pass.
+
+**Gotchas the next session needs to know:**
+
+1. **WinRT runtime classes cannot be `new`'d in tests.** `GlobalSystemMediaTransportControlsSessionPlaybackControls` has no public constructor and read-only properties; the same applies to media-properties and timeline-properties classes. The mapper therefore consumes record shapes, and the service projects SMTC objects into those shapes. **Do not change the mapper's input types to the runtime classes** — the test project cannot supply substitutes.
+
+2. **SMTC type names are exact.** The timeline class is `Windows.Media.Control.GlobalSystemMediaTransportControlsSessionTimelineProperties` (with `Session` in the middle). The last-updated field on the timeline is `LastUpdatedTime`, not `LastUpdated`. The control methods `TryPlayAsync` / `TryPauseAsync` / `TrySkipPreviousAsync` / `TryStopAsync` / `TrySkipNextAsync` return `Windows.Foundation.IAsyncOperation<bool>`, not `<int>`. If a compile error names any of these, check the spelling before assuming a missing API.
+
+3. **`IAsyncOperation<T>` requires `using Windows.Foundation;`** in any file that returns or awaits one. The CS052 error otherwise is "`IAsyncOperation<T>` not found" — easy to misread as a missing package.
+
+4. **`TryGetMediaPropertiesAsync()` returns `IAsyncOperation<MediaProperties?>`** — the result may be null (the source app has not populated metadata yet). Always null-check before reading `Title` / `Artist` / `AlbumTitle` / `Thumbnail`.
+
+5. **Synchronous SMTC reads (`GetPlaybackInfo()`, `GetTimelineProperties()`)** do not need to be `async Task` — they execute inline on the marshaled UI thread. Marking them `async Task` without an `await` triggers CS1998.
+
+6. **The service uses `Volatile.Read` / `Volatile.Write` on `_currentSnapshot` and `_generation`** so the dispatcher-thread publish path and the worker-thread generation check stay coherent. **Do not remove these** — the handoff's "stale async result" hazard is real and the generation check only works if the reads are volatile.
+
+7. **The artwork decode in `DecodeArtworkAsync` is currently a stub** returning `Task<ImageSource?>(null)`. Task 4 will replace it with the real `ThumbnailDecoder` pipeline. The signature is already correct (`Task<ImageSource?>`) so Task 4 can plug in directly.
+
+8. **Lifecycle tests for the service itself are deferred to Task 11** (per the handoff plan). `InternalsVisibleTo TrackDot.Tests` is already wired in `TrackDot.csproj`, so the service can be exercised directly from tests when Task 11 lands.
 
 ---
 
-## Next: Task 3 — SMTC session discovery and event lifecycle
+## Next: Task 4 — Decode album artwork safely
 
 **Plan said (verbatim):**
-> Implement `MediaControllerService` using `GlobalSystemMediaTransportControlsSessionManager.RequestAsync()`, subscribe to `CurrentSessionChanged`, `MediaPropertiesChanged`, `PlaybackInfoChanged`, `TimelinePropertiesChanged`, centralize session replacement in `SetCurrentSessionAsync(...)`, unsubscribe all old session handlers before subscribing to new ones, increment a generation counter, ignore stale async results.
+> Implement `ThumbnailDecoder` using `RandomAccessStreamReference.OpenReadAsync()` → `BitmapDecoder` → `SoftwareBitmap` → `BitmapSource` (`WriteableBitmap` if `SoftwareBitmap` direct conversion is blocked). Decode off the UI thread, clamp to a max pixel size (256x256), freeze the result, dispose intermediate buffers, and return `null` (not throw) on missing/unsupported input.
 
 **Files to create:**
-- `Services/MediaControllerService.cs` — the platform-facing implementation.
-- `Services/MediaPropertyMapper.cs` — pure functions mapping SMTC enums (and `GlobalSystemMediaTransportControlsSessionPlaybackControls`) to `MediaPlaybackState` and `TransportCapabilities`. Keeps the platform code thin and the mapping unit-testable.
-- `tests/TrackDot.Tests/MediaPropertyMapperTests.cs` — tests for the mapper.
+- `Services/ThumbnailDecoder.cs` — the artwork decode pipeline.
+- `tests/TrackDot.Tests/ThumbnailDecoderTests.cs` — tests for the decoder.
 
 **Concrete steps the next session should follow:**
 
-1. **Verify the SMTC API surface against the installed SDK ref.** The package is at `C:/Users/Herlandro Ando/.nuget/packages/microsoft.windows.sdk.net.ref/10.0.19041.31/lib/net6.0/Microsoft.Windows.SDK.NET.dll`. Use `dotnet ildasm` or grep the XML doc at `Microsoft.Windows.SDK.NET.xml` for `GlobalSystemMediaTransportControlsSessionManager` to confirm exact method names. The .NET projection may use `Task<bool>` instead of `IAsyncOperation<bool>` directly.
+1. **Verify the artwork pipeline API surface against the installed SDK ref.** The relevant types are:
+   - `Windows.Storage.Streams.IRandomAccessStreamReference` (interface, no constructor).
+   - `Windows.Storage.Streams.RandomAccessStreamReference` (factory class — `CreateFromFile`, `CreateFromUri`, etc.).
+   - `Windows.Graphics.Imaging.BitmapDecoder` (static `CreateAsync` overloads).
+   - `Windows.Graphics.Imaging.SoftwareBitmap` (has `BitmapPixelFormat`, `BitmapAlphaMode`, `SoftwareBitmap.CopyTo(WriteableBitmap)` etc.).
+   - `Windows.UI.Xaml.Media.Imaging.WriteableBitmap` — note this is the UWP type, not `System.Windows.Media.Imaging.WriteableBitmap`. WPF binding works because both are `ImageSource`-compatible at the WPF layer, but the type lives in `Windows.UI.Xaml.Media.Imaging`.
 
-2. **Draft tests first (RED).** The plan called for "Write pure mapper tests for playback status and `GlobalSystemMediaTransportControlsSessionPlaybackControls` to `MediaPlaybackState` and `TransportCapabilities`." The mapper should be a pure static class so all tests run without WPF dispatcher.
+   Verify exact member names by grepping `C:/Users/Herlandro Ando/.nuget/packages/microsoft.windows.sdk.net.ref/10.0.19041.31/lib/net6.0/Microsoft.Windows.SDK.NET.xml` for `BitmapDecoder`, `SoftwareBitmap`, `RandomAccessStreamReference`. The same naming pitfall as Task 3 (typos, runtime-class vs record) applies.
 
-3. **Implement the mapper.** Three static functions needed:
-   - `MediaPlaybackState MapPlaybackStatus(GlobalSystemMediaTransportControlsSessionPlaybackStatus)` — maps SMTC's enum to ours.
-   - `TransportCapabilities MapPlaybackControls(GlobalSystemMediaTransportControlsSessionPlaybackControls)` — copies each CanXxx flag.
-   - `MediaSessionSnapshot BuildSnapshot(...)` — assemble from session properties, playback info, timeline properties, and decoded artwork (Task 4 will plug in the decoder).
+2. **Draft tests first (RED).** The plan called for "ThumbnailDecoder tests for null input → null output, oversized input → clamped output, valid input → frozen `ImageSource`." The decoder should be a pure method so the tests run without a live SMTC session.
 
-4. **Implement `MediaControllerService`.**
-   - Constructor accepts a `SynchronizationContext` (or `Dispatcher`) for marshalling WinRT callbacks to the UI thread. Default to `SynchronizationContext.Current` — captured in `App.OnStartup` on the WPF dispatcher.
-   - `InitializeAsync`: calls `GlobalSystemMediaTransportControlsSessionManager.RequestAsync()`, subscribes to `CurrentSessionChanged`, then calls `SetCurrentSessionAsync(manager.GetCurrentSession())`.
-   - `SetCurrentSessionAsync(...)`: nulls old handlers, increments `_generation`, subscribes to new session's `MediaPropertiesChanged` / `PlaybackInfoChanged` / `TimelinePropertiesChanged`, kicks off initial `TryGetMediaPropertiesAsync` / `GetPlaybackInfo` / `GetTimelineProperties` reads.
-   - Each async read carries the generation in its closure; if `_generation` advanced before completion, drop the result silently.
-   - All completions marshal to the dispatcher thread before publishing `SnapshotChanged`.
-   - `DisposeAsync` unsubscribes everywhere and stops publishing.
+   Note: the input to the decoder is an `IRandomAccessStreamReference` runtime class — **same testability problem as Task 3's playback controls**. Either:
+   - (a) Take `IRandomAccessStreamReference` directly and have tests supply a fake via reflection on `IPropertyValue`-backed streams (heavyweight).
+   - (b) Take a `Func<Task<Stream>>` that opens the thumbnail, with tests providing a `MemoryStream` lambda. Cleaner — pick this unless the plan explicitly requires the runtime class.
 
-5. **Tests:**
-   - `MediaPropertyMapperTests` — pure unit tests, no WPF.
-   - For the service itself, plan says Task 11 will add lifecycle tests via `InternalsVisibleTo` (already wired in `TrackDot.csproj`). For Task 3, defer the service lifecycle tests to Task 11. **However**, the plan mentions extracting a "small internal coordinator" if generation handling is trapped in WinRT code. The cleanest path here is to keep `MediaControllerService` thin and put the generation/coordinator logic in a separate internal class — let Task 11 surface that.
+3. **Implement the decoder.**
+   - Signature: `public static async Task<ImageSource?> DecodeAsync(Func<Task<Stream>> openStream, CancellationToken ct = default)`.
+   - Open the stream, create `BitmapDecoder.CreateAsync(stream.AsRandomAccessStream())`.
+   - Get `SoftwareBitmap` via `decoder.GetSoftwareBitmapAsync()` or `decoder.GetPixelDataAsync()` + `SoftwareBitmap.CreateCopyFromBuffer(...)`.
+   - If width or height exceeds 256, scale by setting `decoder.Scale` or applying `BitmapTransform.ScaledWidth/ScaledHeight`.
+   - Convert `SoftwareBitmap` to a WPF `BitmapSource`: `SoftwareBitmap.CopyTo(WriteableBitmap)` works on Windows 10+, OR use `new WriteableBitmap(softwareBitmap.PixelWidth, softwareBitmap.PixelHeight, 96, 96, PixelFormats.Bgra32, null)` + `softwareBitmap.CopyTo(writeableBitmap)`. Verify the working form during build.
+   - **Freeze the result** (`bitmap.Freeze()`) before returning — the UI thread owns all `ImageSource` instances and a frozen one is thread-safe to assign from any thread.
+   - **Wrap every step in try/catch** — malformed thumbnails should produce `null`, never throw. This is the contract the mapper already assumes.
 
-6. **Build + test:** `dotnet build TrackDot.sln -c Debug --no-restore` then `dotnet test TrackDot.sln -c Debug --no-build --filter MediaPropertyMapperTests`. Both must succeed.
+4. **Wire into `MediaControllerService`.** Replace the stub:
+   ```csharp
+   private static Task<ImageSource?> DecodeArtworkAsync(object? thumbnail)
+       => Task.FromResult<ImageSource?>(null);
+   ```
+   with a real call. The `IRandomAccessStreamReference` parameter from `MediaProperties.Thumbnail` becomes:
+   ```csharp
+   var artwork = thumbnail is null
+       ? null
+       : await ThumbnailDecoder.DecodeAsync(
+           () => ((IRandomAccessStreamReference)thumbnail).OpenReadAsync().AsTask().ContinueWith(t => t.Result.AsStreamForRead()),
+           ct).ConfigureAwait(true);
+   ```
+   Wrap in `try/catch` and return `null` on any failure (the service already swallows decoder errors).
 
-**Commit message:** `feat: track active Windows media session`
+5. **Build + test:** `dotnet build TrackDot.sln -c Debug --no-restore` then `dotnet test TrackDot.sln -c Debug --no-build --filter ThumbnailDecoderTests`. Both must succeed. Then run the full suite — should still be 36 + new decoder tests green.
+
+**Commit message:** `feat: decode album artwork safely`
 
 ---
 
@@ -126,7 +168,9 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 - **Async work crossing session switches.** If a user starts playing Track A, the manager briefly switches to Track B mid-`TryGetMediaPropertiesAsync`, the old completion arrives with stale data. The generation counter is the only thing standing between you and the wrong track displayed. Check it before every publish.
 - **Empty state on no session.** When `GetCurrentSession()` returns null, publish `MediaSessionSnapshot.Empty` immediately (don't just leave `Current` as the default initialization value forever).
 - **Don't catch all exceptions.** SMTC may throw `COMException` with `HResult 0x800704C7` (no session) on the first read. That is normal and should be treated as "publish Empty", not log spam. Genuine exceptions should still be logged in debug builds.
-- **Marshalling `ImageSource` is dangerous.** The WPF UI thread owns all `ImageSource` instances. Decoding happens in Task 4 (`ThumbnailDecoder`) and the result is `Freeze()`'d before publishing — frozen `BitmapImage` is thread-safe.
+- **Marshalling `ImageSource` is dangerous.** The WPF UI thread owns all `ImageSource` instances. Decode happens in Task 4 (`ThumbnailDecoder`) and the result is `Freeze()`'d before publishing — frozen `BitmapSource` is thread-safe.
+- **WinRT runtime classes have no public constructors.** Every mapper/decoder that wants to be testable must accept a record / delegate / stream rather than the runtime class. This pattern is established in Task 3 and applies again in Task 4.
+- **The `_context.Post` callback may be dropped** if the dispatcher is shutting down. Treat dropped callbacks as "silently no-op" rather than retrying — the service is being torn down anyway.
 
 ---
 
@@ -140,7 +184,7 @@ TrackDot/
 │   ├── HANDOFF.md          (this file)
 │   └── plans/
 │       └── 2026-08-09_000000-track-dot-windows-smtc-popover.md
-├── App.xaml                (untouched - has StartupUri="MainWindow.xaml", will beedited in Task 9)
+├── App.xaml                (untouched - has StartupUri="MainWindow.xaml", will be edited in Task 9)
 ├── App.xaml.cs             (untouched empty partial class)
 ├── AssemblyInfo.cs         (untouched)
 ├── MainWindow.xaml         (untouched template Grid)
@@ -151,11 +195,14 @@ TrackDot/
 │   ├── PlaybackSnapshot.cs
 │   └── TransportCapabilities.cs
 ├── Services/
-│   └── IMediaControllerService.cs
+│   ├── IMediaControllerService.cs
+│   ├── MediaControllerService.cs
+│   └── MediaPropertyMapper.cs
 ├── TrackDot.csproj
 ├── TrackDot.sln
 ├── TrackDot.csproj.user    (untouched)
 └── tests/TrackDot.Tests/
+    ├── MediaPropertyMapperTests.cs
     ├── MediaSessionSnapshotTests.cs
     ├── SmokeTests.cs
     └── TrackDot.Tests.csproj
@@ -163,8 +210,6 @@ TrackDot/
 
 Need to be created (planned, do not yet exist):
 - `Models/` complete (no more needed)
-- `Services/MediaControllerService.cs`
-- `Services/MediaPropertyMapper.cs`
 - `Services/ThumbnailDecoder.cs` (Task 4)
 - `Services/ITrayIconService.cs`, `TrayIconService.cs` (Task 8)
 - `Services/WindowPlacementService.cs` (Task 7)
@@ -188,16 +233,19 @@ dotnet test TrackDot.sln -c Debug --no-build
 dotnet build TrackDot.sln -c Release
 ```
 
-Current `dotnet test` status: 16 / 16 passing.
+Current `dotnet test` status: 36 / 36 passing (3 smoke + 13 snapshot + 20 mapper).
+Current `dotnet build` status: Debug and Release both build with 0 warnings, 0 errors.
 
 ---
 
 ## Decision points deferred for the next session
 
-1. **Subagent-driven-development vs. main-thread execution.** The plan calls for one-subagent-per-task with spec + quality reviews. The previous session stayed in the main thread because the per-task files were small and incremental. The next session should pick one approach and apply it consistently. My recommendation: stay in the main thread for code authoring; review the diff against the spec and the quality checklist yourself before each commit. Saves context-switching cost.
+1. **Subagent-driven-development vs. main-thread execution.** The plan calls for one-subagent-per-task with spec + quality reviews. The previous two sessions stayed in the main thread because the per-task files were small and incremental. The next session should pick one approach and apply it consistently. My recommendation: stay in the main thread for code authoring; review the diff against the spec and the quality checklist yourself before each commit. Saves context-switching cost.
 
 2. **`AllowsTransparency` vs. `WindowStyle=None` + rounded border.** Plan §1.2 deferred this until testing. The next session should ship `WindowStyle=None` with `WindowChrome` rounded corners (the conservative path) and document the rendering tradeoff in `docs/SMOKE_TEST.md` once Task 12 lands.
 
-3. **Source auto-switch policy.** Plan §1.5 says "follow `GetCurrentSession()` for MVP, expose source identity so a future source picker can be added." Implement literal `GetCurrentSession()` in Task 3, no auto-switching.
+3. **Source auto-switch policy.** Plan §1.5 says "follow `GetCurrentSession()` for MVP, expose source identity so a future source picker can be added." Implemented literally `GetCurrentSession()` in Task 3, no auto-switching. Continue this convention in Task 4 (decoder) and Task 5 (commands).
 
 4. **First public distribution format.** Plan §7 recommends framework-dependent ZIP first, then MSIX if installation/startup-registration needs product-grade handling. For Task 14, ship a framework-dependent x64 artifact only; document the MSIX follow-up.
+
+5. **ThumbnailDecoder input type.** `IRandomAccessStreamReference` (runtime class, untestable) vs. `Func<Task<Stream>>` (testable, requires a small adapter in the service). Recommendation: `Func<Task<Stream>>` — matches the testability convention established in Task 3 and keeps the decoder itself pure.
