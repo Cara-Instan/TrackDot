@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Media;
@@ -299,12 +300,43 @@ public sealed class MediaControllerService : IMediaControllerService
     }
 
     /// <summary>
-    /// Task 4 will replace this with a real
-    /// <c>ThumbnailDecoder</c> call. For now we return null so the
-    /// UI can wire up the rest of the snapshot pipeline.
+    /// Decodes the SMTC media-properties thumbnail via
+    /// <see cref="ThumbnailDecoder"/>. The runtime class
+    /// <c>IRandomAccessStreamReference</c> is projected into a
+    /// managed <c>Stream</c> here so the decoder itself stays
+    /// testable without a live SMTC session.
     /// </summary>
+    /// <param name="thumbnail">
+    /// <see cref="GlobalSystemMediaTransportControlsSessionMediaProperties.Thumbnail"/>
+    /// typed as <see cref="object"/> to avoid forcing a WinRT-using
+    /// directive on every file that touches this method. SMTC may
+    /// return null when the source app has not populated artwork.
+    /// </param>
     private static Task<ImageSource?> DecodeArtworkAsync(object? thumbnail)
-        => Task.FromResult<ImageSource?>(null);
+    {
+        if (thumbnail is null)
+        {
+            return Task.FromResult<ImageSource?>(null);
+        }
+
+        // Adapter: IRandomAccessStreamReference.OpenReadAsync()
+        // returns IAsyncOperation<IRandomAccessStreamWithContentType>;
+        // we convert to IAsyncOperation<IInputStream>, project to
+        // Task<IRandomAccessStream>, then to a managed Stream.
+        return ThumbnailDecoder.DecodeAsync(
+            openStream: () =>
+            {
+                var reference = (Windows.Storage.Streams.IRandomAccessStreamReference)thumbnail;
+                return OpenThumbnailAsManagedStreamAsync(reference);
+            });
+    }
+
+    private static async Task<Stream> OpenThumbnailAsManagedStreamAsync(
+        Windows.Storage.Streams.IRandomAccessStreamReference reference)
+    {
+        var winrtStream = await reference.OpenReadAsync();
+        return winrtStream.AsStreamForRead();
+    }
 
     // -------------------------------------------------------------------
     // Publish path - all UI thread, all generation-guarded
