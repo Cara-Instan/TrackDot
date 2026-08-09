@@ -19,6 +19,7 @@
     <Compile Include="MediaPropertyMapperTests.cs" />
     <Compile Include="ThumbnailDecoderTests.cs" />
     <Compile Include="AsyncRelayCommandTests.cs" />
+    <Compile Include="MediaControllerCommandTests.cs" />
   </ItemGroup>
 
   <ItemGroup>

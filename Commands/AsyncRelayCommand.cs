@@ -35,6 +35,15 @@ public sealed class AsyncRelayCommand : ICommand
 {
     private readonly Func<object?, Task> _execute;
     private readonly Func<object?, bool>? _canExecute;
+    private int _running; // 0 = idle, 1 = in-flight (used as a re-entrancy latch)
+
+    /// <summary>
+    /// Test-only accessor for the re-entrancy latch. Exposed so
+    /// unit tests can wait for an in-flight dispatch to drain
+    /// without relying on a fixed number of <c>Task.Yield</c>
+    /// pumps (which is timing-sensitive under Release builds).
+    /// </summary>
+    internal int RunningForTest => Volatile.Read(ref _running);
 
     /// <summary>
     /// Creates a command that runs <paramref name="execute"/> with no
@@ -65,11 +74,20 @@ public sealed class AsyncRelayCommand : ICommand
 
     /// <inheritdoc/>
     public bool CanExecute(object? parameter)
-        => _canExecute is null || _canExecute(parameter);
+    {
+        // The canExecute delegate gates on capability; the latch
+        // gates on in-flight work. Both must be true for the
+        // command to be runnable. We do NOT call the user's
+        // canExecute while a previous dispatch is still in flight
+        // because the cached TransportCapabilities is by definition
+        // stale (the previous click has not yet refreshed it).
+        if (Volatile.Read(ref _running) != 0) return false;
+        return _canExecute is null || _canExecute(parameter);
+    }
 
     /// <inheritdoc/>
     /// <remarks>
-    /// <see cref="ICommand.Execute(object?)"/> returns <c>void</c>, so we
+    /// <see cref="ICommand.Execute(object? )"/> returns <c>void</c>, so we
     /// cannot make this method <c>async Task</c>. The internal
     /// <c>try/catch</c> is required: an unobserved exception from an
     /// <c>async void</c> method on the dispatcher would crash the UI
@@ -77,6 +95,12 @@ public sealed class AsyncRelayCommand : ICommand
     /// </remarks>
     public async void Execute(object? parameter)
     {
+        // Re-entrancy latch: if a previous dispatch is still in
+        // flight, drop the second click silently. The latch uses
+        // Interlocked.CompareExchange so two clicks that race on
+        // separate threads cannot both succeed.
+        if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return;
+
         try
         {
             await _execute(parameter).ConfigureAwait(true);
@@ -90,6 +114,7 @@ public sealed class AsyncRelayCommand : ICommand
         }
         finally
         {
+            Volatile.Write(ref _running, 0);
             // Re-evaluate so the UI toggles Play <-> Pause without
             // waiting for the next CapabilityChanged event.
             RaiseCanExecuteChanged();

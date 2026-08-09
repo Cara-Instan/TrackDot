@@ -229,4 +229,89 @@ public sealed class AsyncRelayCommandTests
 
         Assert.Equal(1, raised);
     }
+
+    // ---- Re-entrancy guard (Task 5b) ----
+
+    [Fact]
+    public async Task Execute_drops_second_click_while_first_is_in_flight()
+    {
+        // The latch must drop the second Execute synchronously when
+        // the first is still in flight, regardless of how many times
+        // the user can click. The plan §Task 5 calls out that
+        // "double-clicks cannot create uncontrolled overlapping
+        // calls".
+        var invocations = 0;
+        var release = new TaskCompletionSource();
+        var sut = new AsyncRelayCommand(() =>
+        {
+            Interlocked.Increment(ref invocations);
+            return release.Task;
+        });
+
+        sut.Execute(null); // first click — latches in, awaits release
+        sut.Execute(null); // second click — should be dropped
+        sut.Execute(null); // third click — should also be dropped
+
+        Assert.Equal(1, invocations);
+
+        // Release and let the in-flight dispatch complete. Yield
+        // repeatedly until the latch clears so we don't depend on
+        // the JIT to schedule the continuation within a fixed
+        // number of pumps.
+        release.SetResult();
+        for (var i = 0; i < 100; i++)
+        {
+            if (sut.RunningForTest == 0) break;
+            await Task.Yield();
+        }
+
+        // Now the latch is clear; a subsequent Execute should run.
+        sut.Execute(null);
+        for (var i = 0; i < 100; i++)
+        {
+            if (sut.RunningForTest == 0) break;
+            await Task.Yield();
+        }
+
+        Assert.Equal(2, invocations);
+    }
+
+    [Fact]
+    public void CanExecute_returns_false_while_a_dispatch_is_in_flight()
+    {
+        // The latch must short-circuit CanExecute as well, so the UI
+        // greys the button out without needing to know about the
+        // underlying transport state.
+        var release = new TaskCompletionSource();
+        var sut = new AsyncRelayCommand(
+            execute: () => release.Task,
+            canExecute: () => true);
+
+        Assert.True(sut.CanExecute(null));
+
+        sut.Execute(null);
+        Assert.False(sut.CanExecute(null),
+            "CanExecute must return false while a dispatch is in flight.");
+
+        release.SetResult();
+    }
+
+    [Fact]
+    public async Task CanExecute_recovers_after_dispatch_completes()
+    {
+        var release = new TaskCompletionSource();
+        var sut = new AsyncRelayCommand(
+            execute: () => release.Task,
+            canExecute: () => true);
+
+        sut.Execute(null);
+        Assert.False(sut.CanExecute(null));
+
+        release.SetResult();
+        await Task.Yield();
+        await Task.Yield();
+
+        Assert.True(sut.CanExecute(null),
+            "CanExecute must return true again once the in-flight dispatch completes.");
+    }
 }

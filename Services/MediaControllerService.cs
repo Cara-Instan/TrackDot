@@ -4,7 +4,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Media;
 using TrackDot.Models;
-using Windows.Foundation;
 using Windows.Media.Control;
 
 namespace TrackDot.Services;
@@ -68,6 +67,51 @@ public sealed class MediaControllerService : IMediaControllerService
                 "(e.g. the WPF UI thread).");
     }
 
+    /// <summary>
+    /// Test-only seam that drops the active session to <c>null</c>
+    /// and forces the cached capabilities to <see cref="TransportCapabilities.None"/>.
+    /// Used to exercise the no-session short-circuit path without a
+    /// live WinRT session manager.
+    /// </summary>
+    /// <remarks>
+    /// Exposed via <c>InternalsVisibleTo TrackDot.Tests</c>. The
+    /// production code path never calls this; the WinRT event
+    /// subscriptions in <see cref="SetCurrentSessionAsync"/> are
+    /// intentionally bypassed because there is no real SMTC session
+    /// to subscribe to in unit tests.
+    /// </remarks>
+    internal void ClearSessionForTest()
+    {
+        lock (_gate)
+        {
+            _currentSession = null;
+            _generation++;
+        }
+
+        var previous = Volatile.Read(ref _currentSnapshot);
+        var next = previous with
+        {
+            Playback = previous.Playback with { Capabilities = TransportCapabilities.None }
+        };
+        Volatile.Write(ref _currentSnapshot, next);
+    }
+
+    /// <summary>
+    /// Test-only seam that updates the cached
+    /// <see cref="TransportCapabilities"/> so the capability gate
+    /// sees the test-supplied flags. The session itself is not
+    /// touched (use <see cref="ClearSessionForTest"/> to drop it).
+    /// </summary>
+    internal void SetCapabilitiesForTest(TransportCapabilities capabilities)
+    {
+        var previous = Volatile.Read(ref _currentSnapshot);
+        var next = previous with
+        {
+            Playback = previous.Playback with { Capabilities = capabilities }
+        };
+        Volatile.Write(ref _currentSnapshot, next);
+    }
+
     /// <inheritdoc/>
     public MediaSessionSnapshot Current => Volatile.Read(ref _currentSnapshot);
 
@@ -129,27 +173,44 @@ public sealed class MediaControllerService : IMediaControllerService
 
     /// <inheritdoc/>
     public Task TogglePlayPauseAsync()
-        => InvokeOnSessionAsync(session =>
-        {
-            var info = session.GetPlaybackInfo();
-            var state = MediaPropertyMapper.MapPlaybackStatus(info.PlaybackStatus);
+        => InvokeOnSessionAsync(
+            capability: CanTogglePlayPause,
+            action: session =>
+            {
+                var info = session.GetPlaybackInfo();
+                var state = MediaPropertyMapper.MapPlaybackStatus(info.PlaybackStatus);
 
-            return state == MediaPlaybackState.Playing
-                ? session.TryPauseAsync()
-                : session.TryPlayAsync();
-        });
+                return state == MediaPlaybackState.Playing
+                    ? session.TryPauseAsync().AsTask()
+                    : session.TryPlayAsync().AsTask();
+            });
 
     /// <inheritdoc/>
     public Task PreviousAsync()
-        => InvokeOnSessionAsync(static session => session.TrySkipPreviousAsync());
+        => InvokeOnSessionAsync(
+            capability: caps => caps.CanGoPrevious,
+            action: static session => session.TrySkipPreviousAsync().AsTask());
 
     /// <inheritdoc/>
     public Task StopAsync()
-        => InvokeOnSessionAsync(static session => session.TryStopAsync());
+        => InvokeOnSessionAsync(
+            capability: caps => caps.CanStop,
+            action: static session => session.TryStopAsync().AsTask());
 
     /// <inheritdoc/>
     public Task NextAsync()
-        => InvokeOnSessionAsync(static session => session.TrySkipNextAsync());
+        => InvokeOnSessionAsync(
+            capability: caps => caps.CanGoNext,
+            action: static session => session.TrySkipNextAsync().AsTask());
+
+    private static bool CanTogglePlayPause(TransportCapabilities caps)
+    {
+        // Play/Pause is one button that maps to either Play or Pause
+        // depending on the current state. Treat the command as
+        // supported if EITHER flag is true - the service picks the
+        // right direction at dispatch time.
+        return caps.CanPlay || caps.CanPause;
+    }
     // -------------------------------------------------------------------
     // Session replacement (the heart of the generation guard)
     // -------------------------------------------------------------------
@@ -480,31 +541,102 @@ public sealed class MediaControllerService : IMediaControllerService
     }
 
     /// <summary>
-    /// Runs <paramref name="action"/> on the active session. The
-    /// session is captured at call time; if the session switches
-    /// while the command is in flight, the OS-side call still hits
-    /// the original session (which has either already been torn
-    /// down or is about to be replaced). Capability gating happens
-    /// in the view-model layer; here we simply forward to the
-    /// session so the manager can decide what to do.
+    /// Wraps the WinRT-specific dispatch path with the three guards
+    /// (no-session, capability short-circuit, failed-try refresh).
+    /// The pure guard logic lives in
+    /// <see cref="DispatchGuardedCommandAsync"/>, which the unit
+    /// tests exercise without a live WinRT session.
     /// </summary>
-    private async Task InvokeOnSessionAsync(
-        Func<GlobalSystemMediaTransportControlsSession, IAsyncOperation<bool>> action)
+    private Task InvokeOnSessionAsync(
+        Func<TransportCapabilities, bool> capability,
+        Func<GlobalSystemMediaTransportControlsSession, Task<bool>> action)
+        => DispatchGuardedCommandAsync(
+            capability: capability,
+            tryCommand: () =>
+            {
+                var session = Volatile.Read(ref _currentSession);
+                if (session is null) return Task.FromResult(false);
+                return action(session);
+            },
+            refresh: () =>
+            {
+                var session = Volatile.Read(ref _currentSession);
+                if (session is null) return;
+                RefreshPlaybackInfoAsync(session, Volatile.Read(ref _generation));
+            });
+
+    /// <summary>
+    /// Pure guard logic for a transport command. Used both by the
+    /// production path (via <see cref="InvokeOnSessionAsync"/>) and
+    /// by unit tests, which pass delegate-based fakes for
+    /// <paramref name="tryCommand"/> and <paramref name="refresh"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three guards run in order:
+    /// </para>
+    /// <list type="number">
+    ///   <item>
+    ///     <b>Disposed short-circuit.</b> If the service has been
+    ///     disposed, returns immediately.
+    ///   </item>
+    ///   <item>
+    ///     <b>Capability short-circuit.</b> Reads the cached
+    ///     <see cref="TransportCapabilities"/> from
+    ///     <see cref="_currentSnapshot"/> and skips the dispatch
+    ///     when <paramref name="capability"/> returns false. This is
+    ///     the second line of defence below <c>canExecute</c>, and
+    ///     necessary for headless callers that do not consult the
+    ///     UI.
+    ///   </item>
+    ///   <item>
+    ///     <b>Failed-try refresh.</b> A <c>false</c> return or
+    ///     thrown exception from <paramref name="tryCommand"/>
+    ///     triggers <paramref name="refresh"/>, which re-reads
+    ///     playback info on the captured session, republishes the
+    ///     snapshot, and (through the view-model's
+    ///     <c>RaiseCanExecuteChanged</c>) refreshes the button
+    ///     state.
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// Exposed as <c>internal</c> so unit tests can drive every
+    /// branch without a WinRT session.
+    /// </para>
+    /// </remarks>
+    internal async Task DispatchGuardedCommandAsync(
+        Func<TransportCapabilities, bool> capability,
+        Func<Task<bool>> tryCommand,
+        Action refresh)
     {
+        ArgumentNullException.ThrowIfNull(capability);
+        ArgumentNullException.ThrowIfNull(tryCommand);
+        ArgumentNullException.ThrowIfNull(refresh);
+
         if (_disposed) return;
 
-        var session = Volatile.Read(ref _currentSession);
-        if (session is null) return;
+        var snapshot = Volatile.Read(ref _currentSnapshot);
+        if (!capability(snapshot.Playback.Capabilities)) return;
 
+        bool success;
         try
         {
-            await action(session).AsTask().ConfigureAwait(true);
+            success = await tryCommand().ConfigureAwait(true);
         }
         catch (Exception)
         {
             // Source app rejected the command (e.g. session
-            // closing). The next authoritative event will
-            // re-publish the new state.
+            // closing mid-dispatch). Schedule a playback refresh so
+            // the next authoritative state is observed promptly.
+            refresh();
+            return;
+        }
+
+        if (!success)
+        {
+            // Session refused the command - capability may have
+            // flipped, the session may be tearing down. Refresh.
+            refresh();
         }
     }
 
