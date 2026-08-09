@@ -1,10 +1,12 @@
 # TrackDot Implementation — Session Handoff
 
-**Date:** 2026-08-09
+**Date:** 2026-08-09 (Task 4 completed in this session)
 **Session:** Resumed from plan `.hermes/plans/2026-08-09_000000-track-dot-windows-smtc-popover.md`
 **Goal:** Implement the 14-task plan to turn the empty WPF template into a Windows SMTC tray popover.
 
 Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configured in this repo).
+
+**Last verification:** `dotnet test -c Debug --no-build` → 48 / 48 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder). Both Debug and Release build with 0 warnings, 0 errors. Run on 2026-08-09 by the closing session; the next session should treat these numbers as authoritative only after re-running `dotnet test` themselves — counts drift if a test is added and the suite is not re-run.
 
 ---
 
@@ -134,14 +136,33 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 
 ## Next: Task 5 — Implement command dispatch and capability gating
 
-The IMediaControllerService command methods (`TogglePlayPauseAsync`, `PreviousAsync`, `StopAsync`, `NextAsync`) already exist on the service and forward to the active session. Task 5 wraps them in an `ICommand` (`Commands/AsyncRelayCommand.cs`) so the view-model layer can bind XAML buttons, and adds capability gating so disabled transport buttons reflect `TransportCapabilities` without bouncing through the controller.
+The IMediaControllerService command methods (`TogglePlayPauseAsync`, `PreviousAsync`, `StopAsync`, `NextAsync`) already exist on the service and forward to the active session via `InvokeOnSessionAsync` (`Services/MediaControllerService.cs:491`). Task 5 wraps them in an `ICommand` so the view-model layer can bind XAML buttons, and adds capability gating so disabled transport buttons reflect `TransportCapabilities` without bouncing through the controller.
 
 Key inputs to look up:
-- `Commands/AsyncRelayCommand.cs` — a small `ICommand` impl with `CanExecute` and an async `Execute` (uses `Task` not `void`; never throws; raises `CanExecuteChanged` after execute so the UI re-evaluates). Will live alongside the view model in Task 6.
-- `Services/IMediaControllerService.cs` — the four methods to wrap. Note the service already swallows command exceptions internally.
-- `Models/TransportCapabilities.cs` — the `CanPlay/CanPause/CanStop/CanGoPrevious/CanGoNext` flags that drive `CanExecute`.
+- `Commands/AsyncRelayCommand.cs` — to be created. A small `ICommand` impl with `CanExecute` and an async `Execute`. Uses `Task` not `void`; never throws; raises `CanExecuteChanged` after execute so the UI re-evaluates. Will live alongside the view model in Task 6.
+- `Services/IMediaControllerService.cs` — the four methods to wrap (`TogglePlayPauseAsync` / `PreviousAsync` / `StopAsync` / `NextAsync`). The service already swallows command exceptions internally via the catch in `InvokeOnSessionAsync` (`Services/MediaControllerService.cs:494-505` region).
+- `Models/TransportCapabilities.cs` — the `CanPlay/CanPause/CanStop/CanGoPrevious/CanGoNext` flags that drive `CanExecute`. Note `TransportCapabilities.None` is the "no session / no controls" sentinel and should map to every button disabled.
+- `Models/MediaPlaybackState.cs` — `Playing` vs not-`Playing` decides whether `TogglePlayPauseAsync` should send Pause or Play (the service already does this internally; the command layer just forwards).
 
-The plan calls for unit tests around `AsyncRelayCommand` (CanExecute changes after async execution, exception swallowed, multiple subscribers). Follow the Task 3 / Task 4 pattern: pure class, no WinRT, exercises every code path.
+Concrete shape the next session should ship:
+```csharp
+public sealed class AsyncRelayCommand : ICommand
+{
+    private readonly Func<object?, Task> _execute;
+    private readonly Func<object?, bool>? _canExecute;
+
+    public AsyncRelayCommand(Func<Task> execute, Func<bool>? canExecute = null);
+    public AsyncRelayCommand(Func<object?, Task> execute, Func<object?, bool>? canExecute = null);
+
+    public bool CanExecute(object? parameter);
+    public async void Execute(object? parameter); // wraps try/catch, raises CanExecuteChanged
+    public event EventHandler? CanExecuteChanged;
+    public void RaiseCanExecuteChanged();
+}
+```
+Two ctors — parameterless `Func<Task>` for the common case (no `CommandParameter`), `Func<object?, Task>` for XAML data-binding. `Execute` is `async void` because `ICommand` demands it, but it must internally `try { await _execute(parameter); } catch { }` so a faulted command never tears down the dispatcher. Tests should cover: parameterless + parameterized ctors, `CanExecute` reflects delegate output, `CanExecuteChanged` fires after Execute, exception in execute is swallowed (no unobserved task), `RaiseCanExecuteChanged` fires when no `CommandManager.RequerySuggested` hook is wired (so the view-model can call it manually).
+
+The plan calls for these tests. Follow the Task 3 / Task 4 pattern: pure class, no WinRT, exercises every code path.
 
 **Commit message:** `feat: command dispatch and capability gating`
 
@@ -233,8 +254,8 @@ Current `dotnet build` status: Debug and Release both build with 0 warnings, 0 e
 
 2. **`AllowsTransparency` vs. `WindowStyle=None` + rounded border.** Plan §1.2 deferred this until testing. The next session should ship `WindowStyle=None` with `WindowChrome` rounded corners (the conservative path) and document the rendering tradeoff in `docs/SMOKE_TEST.md` once Task 12 lands.
 
-3. **Source auto-switch policy.** Plan §1.5 says "follow `GetCurrentSession()` for MVP, expose source identity so a future source picker can be added." Implemented literally `GetCurrentSession()` in Task 3, no auto-switching. Continue this convention in Task 4 (decoder) and Task 5 (commands).
+3. **Source auto-switch policy.** Plan §1.5 says "follow `GetCurrentSession()` for MVP, expose source identity so a future source picker can be added." Implemented literally `GetCurrentSession()` in Task 3, no auto-switching. Continue this convention in Task 5 (commands) and forward — `MediaControllerService` is the only place that picks a session; everything downstream treats it as a single active source.
 
 4. **First public distribution format.** Plan §7 recommends framework-dependent ZIP first, then MSIX if installation/startup-registration needs product-grade handling. For Task 14, ship a framework-dependent x64 artifact only; document the MSIX follow-up.
 
-5. **ThumbnailDecoder input type.** `IRandomAccessStreamReference` (runtime class, untestable) vs. `Func<Task<Stream>>` (testable, requires a small adapter in the service). Recommendation: `Func<Task<Stream>>` — matches the testability convention established in Task 3 and keeps the decoder itself pure.
+5. **ThumbnailDecoder input type — RESOLVED in Task 4.** Chose `Func<Task<Stream>>`. The `IRandomAccessStreamReference` lives behind a small adapter inside `MediaControllerService.OpenThumbnailAsManagedStreamAsync`. The decoder itself stays pure. Same pattern should apply to any future CsWinRT runtime-class input.
