@@ -2,10 +2,40 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <RootNamespace>TrackDot</RootNamespace>
+    <AssemblyName>TrackDot</AssemblyName>
+    <UseWindowsForms>false</UseWindowsForms>
+    <LangVersion>12</LangVersion>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tests\**\*.cs" />
+    <EmbeddedResource Remove="tests\**\*" />
+    <None Remove="tests\**\*" />
+    <Page Remove="tests\**\*.xaml" />
+    <ApplicationDefinition Remove="tests\**\*.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\AppIcon.ico" Condition="Exists('Assets\AppIcon.ico')" />
+    <Resource Include="Assets\PlaceholderArt.png" Condition="Exists('Assets\PlaceholderArt.png')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TrackDot.Tests" />
+  </ItemGroup>
 
 </Project>
