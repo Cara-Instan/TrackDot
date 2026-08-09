@@ -1,16 +1,16 @@
 # TrackDot Implementation — Session Handoff
 
-**Date:** 2026-08-09 (Task 4 completed in this session)
+**Date:** 2026-08-09 (Task 5 completed in this session)
 **Session:** Resumed from plan `.hermes/plans/2026-08-09_000000-track-dot-windows-smtc-popover.md`
 **Goal:** Implement the 14-task plan to turn the empty WPF template into a Windows SMTC tray popover.
 
 Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configured in this repo).
 
-**Last verification:** `dotnet test -c Debug --no-build` → 48 / 48 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder). Both Debug and Release build with 0 warnings, 0 errors. Run on 2026-08-09 by the closing session; the next session should treat these numbers as authoritative only after re-running `dotnet test` themselves — counts drift if a test is added and the suite is not re-run.
+**Last verification:** `dotnet test -c Debug --no-build` → 61 / 61 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 13 command). Both Debug and Release build with 0 warnings, 0 errors. Run on 2026-08-09 by the closing session; the next session should treat these numbers as authoritative only after re-running `dotnet test` themselves — counts drift if a test is added and the suite is not re-run.
 
 ---
 
-## Status: Tasks 1, 2, 3 & 4 complete, Tasks 5-14 pending
+## Status: Tasks 1, 2, 3, 4 & 5 complete, Tasks 6-14 pending
 
 | # | Task | Status | Commit |
 |---|------|--------|--------|
@@ -18,7 +18,7 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 | 2 | Define media state and transport contracts (Models, IMediaControllerService) | ✅ done | `f3f96aa` |
 | 3 | Implement SMTC session discovery and event lifecycle | ✅ done | `9869f15` |
 | 4 | Decode album artwork safely | ✅ done | `82131e0` |
-| 5 | Implement command dispatch and capability gating | 🔴 not started | — |
+| 5 | Implement command dispatch and capability gating | ✅ done | (this session) |
 | 6 | Build view model and progress interpolation | 🔴 not started | — |
 | 7 | Construct the floating popover UI | 🔴 not started | — |
 | 8 | Add tray icon lifecycle and toggle behavior | 🔴 not started | — |
@@ -134,37 +134,36 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 
 ---
 
-## Next: Task 5 — Implement command dispatch and capability gating
+## Task 5 — AsyncRelayCommand (this session)
 
-The IMediaControllerService command methods (`TogglePlayPauseAsync`, `PreviousAsync`, `StopAsync`, `NextAsync`) already exist on the service and forward to the active session via `InvokeOnSessionAsync` (`Services/MediaControllerService.cs:491`). Task 5 wraps them in an `ICommand` so the view-model layer can bind XAML buttons, and adds capability gating so disabled transport buttons reflect `TransportCapabilities` without bouncing through the controller.
+**Files created:**
+- `Commands/AsyncRelayCommand.cs` — `ICommand` impl per the handoff spec. Two ctors (`Func<Task>` and `Func<object?, Task>`), each with an optional canExecute (`Func<bool>` / `Func<object?, bool>`). `Execute` is `async void` with `try/catch/finally` (finally raises `CanExecuteChanged`). `RaiseCanExecuteChanged()` is concrete-only (no `CommandManager.RequerySuggested` hook).
+- `tests/TrackDot.Tests/AsyncRelayCommandTests.cs` — 13 tests: parameterless + parameterized ctor null-checks, parameterless + parameterized execute paths, three `CanExecute` cases (no delegate, parameterless, parameterized), `CanExecuteChanged` fires after Execute, two exception-swallow paths (synchronous throw + faulted task), `RaiseCanExecuteChanged` with/without subscribers, `ICommand` surface compatibility.
 
-Key inputs to look up:
-- `Commands/AsyncRelayCommand.cs` — to be created. A small `ICommand` impl with `CanExecute` and an async `Execute`. Uses `Task` not `void`; never throws; raises `CanExecuteChanged` after execute so the UI re-evaluates. Will live alongside the view model in Task 6.
-- `Services/IMediaControllerService.cs` — the four methods to wrap (`TogglePlayPauseAsync` / `PreviousAsync` / `StopAsync` / `NextAsync`). The service already swallows command exceptions internally via the catch in `InvokeOnSessionAsync` (`Services/MediaControllerService.cs:494-505` region).
-- `Models/TransportCapabilities.cs` — the `CanPlay/CanPause/CanStop/CanGoPrevious/CanGoNext` flags that drive `CanExecute`. Note `TransportCapabilities.None` is the "no session / no controls" sentinel and should map to every button disabled.
+**Files modified:**
+- `tests/TrackDot.Tests/TrackDot.Tests.csproj` — added `<Compile Include="AsyncRelayCommandTests.cs" />`.
+
+**Total tests:** 61 (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 13 command). All pass.
+
+**Gotchas the next session needs to know:**
+
+1. **The parameterless ctor must null-check `execute` BEFORE forwarding to the parameterized ctor via a lambda.** The original `: this(_ => execute(), …)` chain hid the null inside the lambda — the inner ctor's `ArgumentNullException.ThrowIfNull` saw a non-null wrapper and let the bad delegate through to click time. The fix is an explicit check at the top of the parameterless ctor and direct field assignment. The handoff's pseudocode `: this(_ => execute(), …)` was wrong on this point.
+2. **`RaiseCanExecuteChanged` is concrete-only by design.** The view-model layer (Task 6) will hold `AsyncRelayCommand` typed concretely to call it; XAML data-binding goes through `ICommand`, which does NOT expose this method. Do not add it to a separate interface or to `ICommand` — the spec is "manual refresh without `CommandManager`".
+3. **`async void` is required by `ICommand` but the `try/catch` is not optional.** An uncaught exception in `Execute` would surface as a fail-fast on the dispatcher. The controller service already swallows internally; this is belt-and-suspenders.
+4. **`CanExecuteChanged` fires in a `finally` block** so it runs even if the execute delegate throws. The view-model can therefore swap Play ⇄ Pause based on `CanExecuteChanged` after every click without worrying about whether the click succeeded.
+
+---
+
+## Next: Task 6 — Build view model and progress interpolation
+
+Task 6 consumes the building blocks now in place:
+
+- `Commands/AsyncRelayCommand.cs` — wraps each of the four `IMediaControllerService` transport methods (`TogglePlayPauseAsync` / `PreviousAsync` / `StopAsync` / `NextAsync`) for XAML data-binding. The view-model holds them as the concrete `AsyncRelayCommand` type so it can call `RaiseCanExecuteChanged()` after `TransportCapabilities` updates. Each `canExecute` delegate reads the corresponding flag (`CanPlay` / `CanPause` / `CanStop` / `CanGoPrevious` / `CanGoNext`) from `PlaybackSnapshot.Capabilities`, with `TransportCapabilities.None` collapsing every button to disabled.
+- `Services/IMediaControllerService.cs` — the four methods to wrap. The service already swallows command exceptions internally via the catch in `InvokeOnSessionAsync` (`Services/MediaControllerService.cs:494-505` region). The command's own `try/catch` is the second line of defence.
+- `Models/TransportCapabilities.cs` — the flag record that drives `CanExecute`.
 - `Models/MediaPlaybackState.cs` — `Playing` vs not-`Playing` decides whether `TogglePlayPauseAsync` should send Pause or Play (the service already does this internally; the command layer just forwards).
 
-Concrete shape the next session should ship:
-```csharp
-public sealed class AsyncRelayCommand : ICommand
-{
-    private readonly Func<object?, Task> _execute;
-    private readonly Func<object?, bool>? _canExecute;
-
-    public AsyncRelayCommand(Func<Task> execute, Func<bool>? canExecute = null);
-    public AsyncRelayCommand(Func<object?, Task> execute, Func<object?, bool>? canExecute = null);
-
-    public bool CanExecute(object? parameter);
-    public async void Execute(object? parameter); // wraps try/catch, raises CanExecuteChanged
-    public event EventHandler? CanExecuteChanged;
-    public void RaiseCanExecuteChanged();
-}
-```
-Two ctors — parameterless `Func<Task>` for the common case (no `CommandParameter`), `Func<object?, Task>` for XAML data-binding. `Execute` is `async void` because `ICommand` demands it, but it must internally `try { await _execute(parameter); } catch { }` so a faulted command never tears down the dispatcher. Tests should cover: parameterless + parameterized ctors, `CanExecute` reflects delegate output, `CanExecuteChanged` fires after Execute, exception in execute is swallowed (no unobserved task), `RaiseCanExecuteChanged` fires when no `CommandManager.RequerySuggested` hook is wired (so the view-model can call it manually).
-
-The plan calls for these tests. Follow the Task 3 / Task 4 pattern: pure class, no WinRT, exercises every code path.
-
-**Commit message:** `feat: command dispatch and capability gating`
+The view-model also introduces the playback-position interpolation: between `TimelinePropertiesChanged` events the `Position` field needs to advance smoothly so the slider doesn't stutter. `ProgressInterpolator` is the planned helper. Watch for the typical bug where the interpolator resets on every event — it should keep ticking from the last event's `Position`/`LastUpdatedTime` instead.
 
 ---
 
@@ -196,6 +195,8 @@ TrackDot/
 ├── App.xaml                (untouched - has StartupUri="MainWindow.xaml", will be edited in Task 9)
 ├── App.xaml.cs             (untouched empty partial class)
 ├── AssemblyInfo.cs         (untouched)
+├── Commands/
+│   └── AsyncRelayCommand.cs
 ├── MainWindow.xaml         (untouched template Grid)
 ├── MainWindow.xaml.cs      (untouched template)
 ├── Models/
@@ -212,6 +213,7 @@ TrackDot/
 ├── TrackDot.sln
 ├── TrackDot.csproj.user    (untouched)
 └── tests/TrackDot.Tests/
+    ├── AsyncRelayCommandTests.cs
     ├── MediaPropertyMapperTests.cs
     ├── MediaSessionSnapshotTests.cs
     ├── SmokeTests.cs
@@ -221,7 +223,6 @@ TrackDot/
 
 Need to be created (planned, do not yet exist):
 - `Models/` complete (no more needed)
-- `Commands/AsyncRelayCommand.cs` (Task 5)
 - `ViewModels/MainViewModel.cs`, `SettingsViewModel.cs` (Tasks 6, 10)
 - `Converters/TimeSpanTextConverter.cs` (Task 6)
 - `ProgressInterpolator` lives inside `Services/` (Task 6)
@@ -243,7 +244,7 @@ dotnet test TrackDot.sln -c Debug --no-build
 dotnet build TrackDot.sln -c Release
 ```
 
-Current `dotnet test` status: 48 / 48 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder).
+Current `dotnet test` status: 61 / 61 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 13 command).
 Current `dotnet build` status: Debug and Release both build with 0 warnings, 0 errors.
 
 ---
