@@ -10,7 +10,7 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 
 ---
 
-## Status: Tasks 1, 2, 3, 4 & 5 complete, Tasks 6-14 pending
+## Status: Tasks 1, 2, 3, 4 done; Task 5 partially done (AsyncRelayCommand only); Tasks 6-14 pending
 
 | # | Task | Status | Commit |
 |---|------|--------|--------|
@@ -18,7 +18,8 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 | 2 | Define media state and transport contracts (Models, IMediaControllerService) | ✅ done | `f3f96aa` |
 | 3 | Implement SMTC session discovery and event lifecycle | ✅ done | `9869f15` |
 | 4 | Decode album artwork safely | ✅ done | `82131e0` |
-| 5 | Implement command dispatch and capability gating | ✅ done | (this session) |
+| 5a | AsyncRelayCommand (ICommand wrapper for view-model binding) | ✅ done | `b8cb9ee` |
+| 5b | Service-side command guards (re-entrancy, capability gate, failed-Try refresh) | 🔴 not started | — |
 | 6 | Build view model and progress interpolation | 🔴 not started | — |
 | 7 | Construct the floating popover UI | 🔴 not started | — |
 | 8 | Add tray icon lifecycle and toggle behavior | 🔴 not started | — |
@@ -28,6 +29,8 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 | 12 | Windows integration validation (docs only - manual) | 🔴 not started | — |
 | 13 | Document build, usage, limitations, and privacy | 🔴 not started | — |
 | 14 | Produce and verify x64 distributable | 🔴 not started | — |
+
+**The plan §Task 5 has TWO halves** — the `AsyncRelayCommand` plumbing (5a) and the *guarded* command-dispatch logic on the service (5b). Only 5a is shipped. The plan's Task 5 commit message is `feat: add guarded media transport commands`; that commit has NOT been made. See the "Task 5b stub" section below for the four specific gaps.
 
 ---
 
@@ -134,7 +137,9 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 
 ---
 
-## Task 5 — AsyncRelayCommand (this session)
+## Task 5a — AsyncRelayCommand (shipped in commit `b8cb9ee`)
+
+This is the *plumbing* half of plan §Task 5 — the `ICommand` wrapper the view-model layer (Task 6) will bind to. The *guarded dispatch* half (Task 5b) is NOT yet shipped; see the next section.
 
 **Files created:**
 - `Commands/AsyncRelayCommand.cs` — `ICommand` impl per the handoff spec. Two ctors (`Func<Task>` and `Func<object?, Task>`), each with an optional canExecute (`Func<bool>` / `Func<object?, bool>`). `Execute` is `async void` with `try/catch/finally` (finally raises `CanExecuteChanged`). `RaiseCanExecuteChanged()` is concrete-only (no `CommandManager.RequerySuggested` hook).
@@ -151,14 +156,42 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 2. **`RaiseCanExecuteChanged` is concrete-only by design.** The view-model layer (Task 6) will hold `AsyncRelayCommand` typed concretely to call it; XAML data-binding goes through `ICommand`, which does NOT expose this method. Do not add it to a separate interface or to `ICommand` — the spec is "manual refresh without `CommandManager`".
 3. **`async void` is required by `ICommand` but the `try/catch` is not optional.** An uncaught exception in `Execute` would surface as a fail-fast on the dispatcher. The controller service already swallows internally; this is belt-and-suspenders.
 4. **`CanExecuteChanged` fires in a `finally` block** so it runs even if the execute delegate throws. The view-model can therefore swap Play ⇄ Pause based on `CanExecuteChanged` after every click without worrying about whether the click succeeded.
+5. **No re-entrancy guard.** Plan §Task 5 step 1 also calls out "in-flight reentrancy prevention" — the shipped command lets two overlapping `Execute` calls run two overlapping `TryPlayAsync` calls. The user already mitigated at the service side (the `InvokeOnSessionAsync` catch swallows whatever the second call hits), but the guard belongs on the command. Add it as part of Task 5b or Task 6, not later.
 
 ---
 
-## Next: Task 6 — Build view model and progress interpolation
+## Task 5b — Service-side command guards (NOT SHIPPED — next-session stub)
+
+Plan §Task 5 step 1–4 calls out four specific service-side behaviours. Three are missing, one is partial.
+
+**Files to modify:**
+- `Services/MediaControllerService.cs` — the four command methods (`TogglePlayPauseAsync` line 131, `PreviousAsync` line 143, `StopAsync` line 147, `NextAsync` line 151) and the `InvokeOnSessionAsync` helper (line 491).
+- `tests/TrackDot.Tests/` — new `MediaControllerCommandTests.cs`. `InternalsVisibleTo TrackDot.Tests` is already wired in `TrackDot.csproj`, so the service can be exercised directly from tests using small `SessionShape` / `MediaPropertiesShape` / `PlaybackInfoShape` / `ControlsShape` records (the same pattern Task 3's mapper uses).
+
+**Four gaps, in priority order:**
+
+1. **Capability short-circuit at the service.** Plan §Task 5 step 4: "Return normally when no session exists or a capability is false." Currently `PreviousAsync` / `StopAsync` / `NextAsync` forward unconditionally and let the source app reject (the session's `Try*Async` returns `false`). Today the *UI* is responsible for disabling buttons via `canExecute`, but the service itself should also no-op when the relevant flag in `TransportCapabilities` is false — defence in depth, and necessary for headless callers. Read `TransportCapabilities` from the cached snapshot (not from `GetPlaybackInfo()` — that's per-call, the cached value avoids an extra COM hop). Each method maps to one flag:
+   - `PreviousAsync` → `CanGoPrevious`
+   - `TogglePlayPauseAsync` → `CanPlay` if currently not playing, `CanPause` if playing
+   - `StopAsync` → `CanStop`
+   - `NextAsync` → `CanGoNext`
+2. **Failed-`Try*Async` triggers a playback refresh.** Plan §Task 5 step 4: "A failed `Try*Async` result is recoverable and should trigger a playback refresh." `InvokeOnSessionAsync` currently swallows all exceptions AND ignores the `bool` returned by `IAsyncOperation<bool>`. Both halves need to change: inspect the returned `bool` (it's the success indicator — `false` means the session refused) and, on `false` or on thrown exception, call the existing playback-refresh path to re-read `GetPlaybackInfo()`. This is also why the next session needs the cached snapshot path: a refresh publishes a new snapshot, which re-evaluates the buttons via `RaiseCanExecuteChanged` in Task 6.
+3. **No-session path is currently silent.** `InvokeOnSessionAsync` line 497 returns early when `session is null`. That matches the plan, but the *next* guard (capability short-circuit) needs a cached snapshot to read flags from. Confirm `Volatile.Read(ref _currentSnapshot)` is the right hook (it already exists per the Task 3 gotcha #6).
+4. **Service tests for the four guards.** `MediaControllerCommandTests.cs` should cover: capability `false` ⇒ method returns without invoking the session (pass a stub session that records calls); capability `true` ⇒ session is invoked; failed `Try*Async` `false` return ⇒ playback refresh was triggered; thrown exception ⇒ playback refresh was triggered; no-session ⇒ method returns without invoking or refreshing. The "stub session" can be a delegate-based fake — the mapper already proves this pattern is testable without real WinRT.
+
+**Commit message when shipped:** `feat: add guarded media transport commands` (verbatim from plan §Task 5). Do NOT use that message for the AsyncRelayCommand-only commit `b8cb9ee`; the wording belongs to 5b.
+
+**Sequence suggestion:** 5b before Task 6. The view-model (Task 6) needs the capability-gated service to bind to — binding to an unguarded service means `canExecute` can lie and the service will still call through. Ship 5b, *then* Task 6.
+
+---
+
+## Next: Task 5b (preferred) or Task 6
+
+The Task 6 view-model layer can start without 5b (the guards), but shipping 5b first is cleaner — see the "Sequence suggestion" above. The Task 6 entry points remain as listed below.
 
 Task 6 consumes the building blocks now in place:
 
-- `Commands/AsyncRelayCommand.cs` — wraps each of the four `IMediaControllerService` transport methods (`TogglePlayPauseAsync` / `PreviousAsync` / `StopAsync` / `NextAsync`) for XAML data-binding. The view-model holds them as the concrete `AsyncRelayCommand` type so it can call `RaiseCanExecuteChanged()` after `TransportCapabilities` updates. Each `canExecute` delegate reads the corresponding flag (`CanPlay` / `CanPause` / `CanStop` / `CanGoPrevious` / `CanGoNext`) from `PlaybackSnapshot.Capabilities`, with `TransportCapabilities.None` collapsing every button to disabled.
+- `Commands/AsyncRelayCommand.cs` — wraps each of the four `IMediaControllerService` transport methods (`TogglePlayPauseAsync` / `PreviousAsync` / `StopAsync` / `NextAsync`) for XAML data-binding. The view-model holds them as the concrete `AsyncRelayCommand` type so it can call `RaiseCanExecuteChanged()` after `TransportCapabilities` updates. Each `canExecute` delegate reads the corresponding flag (`CanPlay` / `CanPause` / `CanStop` / `CanGoPrevious` / `CanGoNext`) from `PlaybackSnapshot.Capabilities`, with `TransportCapabilities.None` collapsing every button to disabled. **Note: if 5b is shipped first, the service-side capability gate is the second line of defence; if 5b is skipped, the `canExecute` delegates are the only gate.**
 - `Services/IMediaControllerService.cs` — the four methods to wrap. The service already swallows command exceptions internally via the catch in `InvokeOnSessionAsync` (`Services/MediaControllerService.cs:494-505` region). The command's own `try/catch` is the second line of defence.
 - `Models/TransportCapabilities.cs` — the flag record that drives `CanExecute`.
 - `Models/MediaPlaybackState.cs` — `Playing` vs not-`Playing` decides whether `TogglePlayPauseAsync` should send Pause or Play (the service already does this internally; the command layer just forwards).
@@ -224,6 +257,10 @@ TrackDot/
 Need to be created (planned, do not yet exist):
 - `Models/` complete (no more needed)
 - `ViewModels/MainViewModel.cs`, `SettingsViewModel.cs` (Tasks 6, 10)
+- `tests/TrackDot.Tests/MediaControllerCommandTests.cs` (Task 5b — guards)
+- `tests/TrackDot.Tests/Fakes/FakeMediaControllerService.cs` (Task 6, reused by Task 11)
+- `tests/TrackDot.Tests/MainViewModelTests.cs`, `ProgressInterpolationTests.cs` (Task 6)
+- `tests/TrackDot.Tests/ServiceGenerationTests.cs`, `ViewModelLifecycleTests.cs` (Task 11)
 - `Converters/TimeSpanTextConverter.cs` (Task 6)
 - `ProgressInterpolator` lives inside `Services/` (Task 6)
 - `Services/WindowPlacementService.cs` (Task 7)
@@ -255,7 +292,7 @@ Current `dotnet build` status: Debug and Release both build with 0 warnings, 0 e
 
 2. **`AllowsTransparency` vs. `WindowStyle=None` + rounded border.** Plan §1.2 deferred this until testing. The next session should ship `WindowStyle=None` with `WindowChrome` rounded corners (the conservative path) and document the rendering tradeoff in `docs/SMOKE_TEST.md` once Task 12 lands.
 
-3. **Source auto-switch policy.** Plan §1.5 says "follow `GetCurrentSession()` for MVP, expose source identity so a future source picker can be added." Implemented literally `GetCurrentSession()` in Task 3, no auto-switching. Continue this convention in Task 5 (commands) and forward — `MediaControllerService` is the only place that picks a session; everything downstream treats it as a single active source.
+3. **Source auto-switch policy.** Plan §1.5 says "follow `GetCurrentSession()` for MVP, expose source identity so a future source picker can be added." Implemented literally `GetCurrentSession()` in Task 3, no auto-switching. Continue this convention in Task 5b (command guards) and forward — `MediaControllerService` is the only place that picks a session; everything downstream treats it as a single active source.
 
 4. **First public distribution format.** Plan §7 recommends framework-dependent ZIP first, then MSIX if installation/startup-registration needs product-grade handling. For Task 14, ship a framework-dependent x64 artifact only; document the MSIX follow-up.
 
