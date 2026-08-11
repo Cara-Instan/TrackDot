@@ -1,16 +1,16 @@
 # TrackDot Implementation — Session Handoff
 
-**Date:** 2026-08-09 (Tasks 5a + 5b + 5c + 6 completed across three sessions; current session shipped Task 6)
+**Date:** 2026-08-09 (Tasks 5a + 5b + 5c + 6 + 7 + 8 + 9 completed across sessions; current session shipped Task 9)
 **Session:** Resumed from plan `.hermes/plans/2026-08-09_000000-track-dot-windows-smtc-popover.md`
 **Goal:** Implement the 14-task plan to turn the empty WPF template into a Windows SMTC tray popover.
 
 Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configured in this repo).
 
-**Last verification:** `dotnet test -c Debug` and `dotnet test -c Release` → **146 / 146 passing** (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model + 6 single-instance + 8 tray-icon). Both Debug and Release build with 0 warnings, 0 errors. Stress: 5× Debug full-suite re-runs, zero flakes. Run on 2026-08-09 by the Task 8 closing session; the next session should treat these numbers as authoritative only after re-running `dotnet test` themselves — counts drift if a test is added and the suite is not re-run.
+**Last verification:** `dotnet test -c Debug` and `dotnet test -c Release` → **169 / 169 passing** (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model + 6 single-instance + 8 tray-icon + 10 placement + 13 exception-logger). Both Debug and Release build with 0 warnings, 0 errors. Stress: 5× Debug full-suite re-runs, zero flakes. Run on 2026-08-09 by the Task 9 shipping session; the next session should treat these numbers as authoritative only after re-running `dotnet test` themselves — counts drift if a test is added and the suite is not re-run.
 
 ---
 
-## Status: Tasks 1, 2, 3, 4, 5, 6 done; Tasks 7-14 pending
+## Status: Tasks 1, 2, 3, 4, 5, 6, 7, 8, 9 done; Tasks 10-14 pending
 
 | # | Task | Status | Commit |
 |---|------|--------|--------|
@@ -24,7 +24,7 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 | 6 | Build view model and progress interpolation | ✅ done | `3a5b8ec` |
 | 7 | Construct the floating popover UI | ✅ done | `db46fbb` |
 | 8 | Add tray icon lifecycle and toggle behavior | ✅ done | `2d5c165` |
-| 9 | Compose startup, initialization, and error handling | 🔴 not started | — |
+| 9 | Compose startup, initialization, and error handling | ✅ done | `d0e4a7c` |
 | 10 | Implement launch-at-sign-in settings | 🔴 not started | — |
 | 11 | Add automated lifecycle tests and resource checks | 🔴 not started | — |
 | 12 | Windows integration validation (docs only - manual) | 🔴 not started | — |
@@ -297,18 +297,62 @@ Plan §Task 8 is fully implemented. Behaviour shipped:
 
 ---
 
-## Next: Task 9 — Compose startup, initialization, and error handling
+## Next: Task 10 — Implement launch-at-sign-in settings
 
-Task 7 consumes the building blocks now in place:
+Task 10 owns:
 
-- `ViewModels/MainViewModel.cs` — bind to every public property. The popover must flip `IsVisible` on show/hide so the timer starts/stops correctly. Wire the four `AsyncRelayCommand`s to XAML `Command="{Binding ...}"` attributes.
-- `Services/IMediaControllerService.cs` — Task 9 wires the service in `App.OnStartup`; Task 7 just consumes the VM.
-- `Converters/TimeSpanTextConverter.cs` — only needed for bindings to raw `TimeSpan` (e.g. accessibility labels).
-- `ViewModels/DispatcherUiTicker.cs` — `Task 9` will construct this once and pass it to the VM; Task 7 does not need it directly.
+- `Services/IStartupService.cs`, `Services/StartupService.cs` — abstract registry access behind a tiny key/value adapter so tests never mutate the real registry.
+- `ViewModels/SettingsViewModel.cs` and `SettingsWindow.xaml` + `.cs` — the actual settings UI.
+- `tests/TrackDot.Tests/StartupServiceTests.cs` — test disabled/enabled detection, quoted executable paths containing spaces, removal, and idempotent enable/disable.
 
-The popover's `Show` / `Hide` logic must call `vm.IsVisible = true` and `vm.IsVisible = false` respectively. Forgetting this is the #1 risk for the next session — it would leave the 250 ms timer running with the popover hidden, burning CPU.
+The Tray menu wiring already exists (`OpenSettingsMenuItem` in `App.xaml`, click handler in `App.OnExitClicked` family). Task 10 only needs to flip the debug-log click handler to actually open the settings window. The tray tooltip update path is already wired (Task 9's `ITrayIconHandle.SetToolTipText`) — Task 10 can reuse it if the launch-at-sign-in toggle needs to surface a state change (it probably doesn't).
 
-Position the popover above the notification area on the monitor containing the taskbar (Task 7 calls out the Win32/DWM work).
+---
+
+## Task 9 — Compose startup, initialization, and error handling (shipped in commit `d0e4a7c`)
+
+Plan §Task 9 is fully implemented. Behaviour shipped:
+
+1. **`WindowPlacementService`** (deferred from Task 7) — DPI-aware positioning. `IWindowPlacementService` exposes `GetWorkArea()` + `ComputeAnchoredPosition(Size[, Rect])`. The pure math lives in `Services/WindowPlacement.cs` (`internal static` class) so the clamp behaviour is fully unit-tested without a real desktop session. The production wrapper reads `SystemParameters.WorkArea` (the monitor containing the taskbar, in WPF DIPs). `MainWindow.ShowPopover()` calls `_placement.ComputeAnchoredPosition(...)` every time the popover is shown, so a display change (resolution, monitor swap) is picked up without a separate cache-invalidation path or `SystemEvents.DisplaySettingsChanged` subscription.
+2. **Global exception handlers** — `UnhandledExceptionLogger` subscribes to all three WPF / CLR channels in `App.OnStartup` and unsubscribes in `OnExit`:
+   - `Application.DispatcherUnhandledException` → logs and marks `Handled = true` (recoverable path: failed binding evaluation must not crash the tray).
+   - `AppDomain.CurrentDomain.UnhandledException` → logs only (process is terminating; log line is post-mortem evidence).
+   - `TaskScheduler.UnobservedTaskException` → logs and calls `SetObserved()` (belt-and-suspenders; the service already swallows internally).
+3. **SMTC init-failure tray tooltip** — the existing `ITrayIconHandle` seam got a `SetToolTipText(string?)` method. `App.OnStartup` sets `ToolTipTextHealthy` ("TrackDot") at startup; the `InitializeMediaAsync` catch sets `ToolTipTextMediaUnavailable` ("TrackDot (media unavailable)") on failure so the user sees the degraded state at a glance.
+4. **Composition root** — `App.OnStartup` now wires the exception logger first (so a failure in any subsequent step is captured), then the single-instance mutex, then the media service, view-model, window, placement, and tray. `App.OnExit` tears down in reverse with null-safe `try/catch` swallows on every step. The exception logger is disposed *last* so any exception during the teardown of the services above is captured before the process exits.
+
+**Files created / modified:**
+- `Services/IWindowPlacementService.cs`, `Services/WindowPlacement.cs` (pure math, `internal static`), `Services/WindowPlacementService.cs` (production wrapper).
+- `Services/IUnhandledExceptionSink.cs`, `Services/FileUnhandledExceptionSink.cs` (writes to `%LocalAppData%\TrackDot\crash.log` with per-instance lock + first-failure disable), `Services/UnhandledExceptionLogger.cs` (subscribes/unsubscribes the three channels).
+- `Services/ITrayIconHandle.cs` (added `SetToolTipText(string?)` to the existing seam).
+- `App.xaml.cs` — composition root wired: exception logger first, then single-instance, then services, view-model, window, placement, tray; SMTC init-failure tooltip update; teardown in reverse.
+- `MainWindow.xaml.cs` — accepts `IWindowPlacementService` via `SetPlacement(...)`, calls it on every `ShowPopover()`.
+- `tests/TrackDot.Tests/WindowPlacementTests.cs` — **new**, 10 tests: anchor at bottom-right, default vs custom margin, zero margin, clamp to work-area when popover is wider/taller than the work area, secondary monitor work area (rect origin != (0,0)), negative / NaN margin treated as zero, service contract delegation.
+- `tests/TrackDot.Tests/UnhandledExceptionLoggerTests.cs` — **new**, 13 tests: pure formatter (channel tag, exception text, inner exception chain, null arg checks, three channels), file sink (writes, appends, parent-directory creation, empty path rejection, first-failure disable, null line no-op, concurrent writes don't interleave), sink contract (recording fake).
+- `tests/TrackDot.Tests/TrayIconServiceTests.cs` — `TestIconHandle` fake got `SetToolTipText` recording fields.
+- `tests/TrackDot.Tests/TrackDot.Tests.csproj` — explicit `<Compile Include="WindowPlacementTests.cs" />` and `<Compile Include="UnhandledExceptionLoggerTests.cs" />` (the test project uses `EnableDefaultCompileItems=false`).
+
+**Build & test:** Debug + Release both build with 0 warnings, 0 errors. `dotnet test` Debug: **169 / 169 passing** (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model + 6 single-instance + 8 tray-icon + 10 placement + 13 exception-logger). Same on Release. Stable across 5× Debug stress re-runs. XAML surface verifier (the `winrt-wpf-desktop` skill's `scripts/verify-xaml-surface.py`) reports `PASS static=4 bindings=12 commands=4 handlers=5` — every `{StaticResource}`, `{Binding}`, `Command`, and code-behind handler in the popover XAML resolves.
+
+**Gotchas the next session needs to know:**
+
+1. **`WindowPlacement` is `internal static`, not `public`.** The math is testable through the surface but not part of the public contract. Tests reach it via the production `IWindowPlacementService` contract (which delegates) and via `InternalsVisibleTo TrackDot.Tests` (already wired). Do not make it `public` without a reason — the seam is `IWindowPlacementService`, the implementation may change.
+
+2. **`FileUnhandledExceptionSink` opens/closes the file on every write, does not hold a handle.** Concurrent writes are serialised by an internal lock. After the first failed write (e.g. blocked by a regular file at the parent path) the sink flips `IsAvailable` to `false` and every subsequent write is a silent no-op — the production code path will never throw on log failure.
+
+3. **`UnhandledExceptionLogger.Format` is `internal static` for tests.** The WPF dispatcher event hook cannot be exercised from xUnit (no real `Application` instance), so the test surface is the formatter + the file sink. The actual event subscriptions are integration territory and the log line is the only post-mortem evidence. If you need to verify subscription wiring in Task 11, use an xUnit `[Fact]` that constructs the logger with a fake sink and inspects whether the production code path actually fires it.
+
+4. **`Application.DispatcherUnhandledException` is set to `Handled = true` for every exception.** The plan's "do not swallow fatal state corruption" is enforced by the log line — the next session (or post-mortem inspection of `%LocalAppData%\TrackDot\crash.log`) can recover the full exception. If a true-fatal scenario is observed in the field, the recovery path is to *not* mark Handled for that specific exception type, not to remove the logger.
+
+5. **`App.OnExit` disposes the exception logger LAST.** The reverse-construction order means the logger is the last service torn down; any exception thrown during the teardown of the services above is captured in the log before the process exits. Do not reorder the teardown without a reason.
+
+6. **SMTC init-failure tooltip is best-effort.** The `try/catch` around `_trayHandle?.SetToolTipText(...)` in `InitializeMediaAsync` swallows failures so a tooltip update bug cannot prevent the rest of the tray app from working. The actual SMTC init failure is already captured by the exception logger via the outer `catch`.
+
+7. **`MainWindow.ApplyPlacement` falls back to `Width`/`Height` when `DesiredSize`/`ActualSize` is zero.** The popover uses `SizeToContent=Height`, so the first show happens before the window has measured itself. The fallback chain (`DesiredSize → ActualWidth → Width → no-op`) keeps placement working on every show including the first.
+
+8. **XAML surface verifier (`scripts/verify-xaml-surface.py`) has a small bug** — when the regex uses a *capturing* group `(...|=>|{)`, `re.findall` returns tuples, not strings, and the `set()` comparison always fails. The fix is to use a *non-capturing* group `(?:=>|\{)` so `findall` returns just the property name. If you re-run the verifier and the comparison fails on every binding, that's why. The Task 9 verification used the corrected pattern.
+
+9. **`Test count unchanged ≠ surface verified.** The new exception logger and placement service are covered by their own unit tests, but the *composition root* (`App.xaml.cs`) and the *MainWindow wiring changes* are not directly exercised by xUnit. The XAML surface verifier (above) plus `dotnet build` (catches missing `StaticResource` and binding type mismatches) plus the manual smoke test in `docs/SMOKE_TEST.md` (Task 12) are the only signals that the wiring is correct end-to-end.
 
 ---
 
@@ -326,6 +370,11 @@ Position the popover above the notification area on the monitor containing the t
 - **`SoftwareBitmap.CopyToBuffer(Buffer)` requires `Length` set on the buffer.** A fresh `new Buffer(capacity)` has `Length == 0` and the call refuses to write.
 - **`Application.MainWindow` collides with the `MainWindow` type name.** Inside an `App` partial (`App.xaml.cs`), `MainWindow` (unqualified) resolves to the `Application.MainWindow` *instance property*, not the `TrackDot.MainWindow` *type*. `MainWindow.IsShuttingDown = true` therefore compiles as `<Window>.IsShuttingDown = true`, which fails with `'Window' does not contain a definition for 'IsShuttingDown'`. The fix is to fully qualify: `TrackDot.MainWindow.IsShuttingDown = true`. This bites anywhere the App code touches the type, the static field, or any member that shares a name with a `Window` property.
 - **`TaskbarIcon.IconSource` is `ImageSource`, resolved via the pack URI.** When the csproj embeds an asset via `<Resource Include="Assets\AppIcon.ico" />`, the asset lives in `AssemblyName.g.resources` under the path `Assets/AppIcon.ico`. WPF's string→`ImageSource` converter accepts both filesystem paths and `pack://application:,,,/Assets/AppIcon.ico` URIs, but only the pack URI resolves correctly at runtime once the working directory is `bin/.../`. Bare `IconSource="Assets/AppIcon.ico"` works at design time only. Use the pack URI in XAML.
+- **`UnobservedTaskExceptionEventHandler` is `EventHandler<UnobservedTaskExceptionEventArgs>`, not a special delegate.** The TaskScheduler event is typed as the generic `EventHandler<T>`; there is no dedicated `UnobservedTaskExceptionEventHandler` delegate in .NET 8. Field type must be `EventHandler<UnobservedTaskExceptionEventArgs>` for the symmetric Add/Remove to compile.
+- **`WindowPlacement` is `internal static`, not a public type.** The pure placement math is testable through the `IWindowPlacementService` contract and via `InternalsVisibleTo TrackDot.Tests`. The `internal` modifier means production callers go through the interface — the implementation may change. Do not make it `public` without a reason.
+- **The XAML surface verifier's regex bug.** `scripts/verify-xaml-surface.py` from the `winrt-wpf-desktop` skill uses `(=>|\{)` (capturing) in the property scanner, which makes `re.findall` return tuples. The `set()` comparison then always fails. Fix: change to `(?:=>|\{)` (non-capturing) so `findall` returns just the property name. Symptom: every binding shows as missing even though they all exist.
+- **`SystemParameters.WorkArea` updates automatically on display change.** No `SystemEvents.DisplaySettingsChanged` subscription is required — the property re-reads on every access, so a resolution change is picked up on the next show without invalidation logic. The popover's `ShowPopover` calls `_placement.ComputeAnchoredPosition(...)` directly, which reads `WorkArea` fresh every time.
+- **The exception logger must be constructed BEFORE any service that can throw.** The composition root installs the logger as step 0 so a failure during mutex acquisition, service construction, view-model wiring, window setup, or tray attachment is captured in `%LocalAppData%\TrackDot\crash.log` rather than only the visual-studio debug stream.
 
 ---
 
@@ -363,7 +412,13 @@ TrackDot/
 │   ├── IPopoverHost.cs
 │   ├── ITrayIconHandle.cs
 │   ├── TrayIconHandle.cs
-│   └── TrayIconService.cs
+│   ├── TrayIconService.cs
+│   ├── IWindowPlacementService.cs
+│   ├── WindowPlacement.cs
+│   ├── WindowPlacementService.cs
+│   ├── IUnhandledExceptionSink.cs
+│   ├── FileUnhandledExceptionSink.cs
+│   └── UnhandledExceptionLogger.cs
 ├── ViewModels/
 │   ├── DispatcherUiTicker.cs
 │   ├── IUiTicker.cs
@@ -384,6 +439,8 @@ TrackDot/
     ├── SmokeTests.cs
     ├── ThumbnailDecoderTests.cs
     ├── TrayIconServiceTests.cs
+    ├── UnhandledExceptionLoggerTests.cs
+    ├── WindowPlacementTests.cs
     └── TrackDot.Tests.csproj
 ```
 
@@ -408,7 +465,7 @@ dotnet test TrackDot.sln -c Debug --no-build
 dotnet build TrackDot.sln -c Release
 ```
 
-Current `dotnet test` status: 146 / 146 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model + 6 single-instance + 8 tray-icon). Stable across Debug and Release (5× Debug stress runs in this session, zero flakes).
+Current `dotnet test` status: 169 / 169 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model + 6 single-instance + 8 tray-icon + 10 placement + 13 exception-logger). Stable across Debug and Release (5× Debug stress runs in this session, zero flakes).
 Current `dotnet build` status: Debug and Release both build with 0 warnings, 0 errors.
 
 ---
