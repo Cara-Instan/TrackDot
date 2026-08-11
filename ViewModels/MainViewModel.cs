@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
@@ -10,8 +11,9 @@ namespace TrackDot.ViewModels;
 
 /// <summary>
 /// The main popover view-model. Subscribes to
-/// <see cref="IMediaControllerService.SnapshotChanged"/>, mirrors
-/// the snapshot into bindable properties, owns the four transport
+/// <see cref="IMediaControllerService.SnapshotChanged"/> and
+/// <see cref="IMediaControllerService.SessionListChanged"/>, mirrors
+/// both into bindable properties, owns transport and volume
 /// <see cref="AsyncRelayCommand"/> instances, and drives
 /// <see cref="ProgressInterpolator"/> while the popover is visible
 /// and playback is <see cref="MediaPlaybackState.Playing"/>.
@@ -81,8 +83,24 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>The AUMID of the source app (Spotify, Chrome, etc.). Null when there is no active session.</summary>
     public string? SourceAppUserModelId => _snapshot.SourceAppUserModelId;
 
+    /// <summary>Formatted human-readable application name parsed from SourceAppUserModelId.</summary>
+    public string SourceAppName => string.IsNullOrWhiteSpace(_snapshot.SourceAppUserModelId)
+        ? string.Empty
+        : MainViewModelHelpers.FormatAppName(_snapshot.SourceAppUserModelId);
+
     /// <summary>True when the latest snapshot is <see cref="MediaPlaybackState.Playing"/>.</summary>
     public bool IsPlaying => _snapshot.Playback.State == MediaPlaybackState.Playing;
+
+    /// <summary>Segoe icon glyph for play (\uE768) or pause (\uE769).</summary>
+    public string PlayPauseIcon => IsPlaying ? "\uE769" : "\uE768";
+
+    /// <summary>Vector path geometry string for play or pause icon.</summary>
+    public string PlayPausePathData => IsPlaying
+        ? "M 3,2 H 7 V 18 H 3 Z M 13,2 H 17 V 18 H 13 Z"
+        : "M 4,2 L 18,10 L 4,18 Z";
+
+    /// <summary>Tool tip text for Play / Pause action.</summary>
+    public string PlayPauseToolTip => IsPlaying ? "Pause" : "Play";
 
     /// <summary>True when there is an active media session with metadata.</summary>
     public bool HasMedia => !ReferenceEquals(_snapshot, MediaSessionSnapshot.Empty)
@@ -93,9 +111,6 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         get
         {
-            // If the popover is visible AND we're playing, return
-            // the interpolated value. Otherwise return the
-            // snapshot's last-known position, clamped.
             if (_isVisible && IsPlaying)
             {
                 var interpolated = ProgressInterpolator.Evaluate(
@@ -110,6 +125,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    /// <summary>True when seeking is supported by the active media session.</summary>
+    public bool CanSeek => _snapshot.Playback.Capabilities.CanSeek;
+
     /// <summary>Duration in seconds. Zero when the source has not reported a duration.</summary>
     public double DurationSeconds => _snapshot.Playback.EndTime.TotalSeconds;
 
@@ -118,6 +136,56 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     /// <summary>Total duration as text, e.g. "4:56".</summary>
     public string DurationTimeText => FormatTime(_snapshot.Playback.EndTime);
+
+    // ── Feature 9 — Session Picker ──────────────────────────────────────────
+
+    /// <summary>
+    /// The live list of available SMTC sessions. Forwarded directly from
+    /// <see cref="IMediaControllerService.AvailableSessions"/>; raises
+    /// <see cref="INotifyPropertyChanged.PropertyChanged"/> whenever
+    /// <see cref="IMediaControllerService.SessionListChanged"/> fires.
+    /// </summary>
+    public IReadOnlyList<MediaSessionInfo> AvailableSessions => _service.AvailableSessions;
+
+    /// <summary>
+    /// <see langword="true"/> when two or more SMTC sessions are
+    /// active simultaneously (e.g. Spotify + Chrome). Used to
+    /// show / collapse the session-picker panel in the popover.
+    /// </summary>
+    public bool HasMultipleSessions => _service.AvailableSessions.Count > 1;
+
+    // ── Feature 10 — Volume / Mute ───────────────────────────────────────────
+
+    /// <summary>
+    /// Current master volume of the SMTC source application, in [0.0, 1.0].
+    /// Sourced from the snapshot's <see cref="MediaSessionSnapshot.Volume"/>.
+    /// </summary>
+    public double Volume => _snapshot.Volume;
+
+    /// <summary>
+    /// Volume expressed as an integer percentage [0–100] for binding to a
+    /// Slider whose Maximum is 100.
+    /// </summary>
+    public double VolumePercent => Math.Round(_snapshot.Volume * 100.0);
+
+    /// <summary>
+    /// <see langword="true"/> when the audio session is muted.
+    /// Sourced from <see cref="MediaSessionSnapshot.IsMuted"/>.
+    /// </summary>
+    public bool IsMuted => _snapshot.IsMuted;
+
+    /// <summary>
+    /// Speaker icon path data. Solid speaker when not muted; speaker
+    /// with a cross when muted.
+    /// </summary>
+    public string MuteIconPathData => _snapshot.IsMuted
+        ? "M 2,7 H 7 L 12,3 V 17 L 7,13 H 2 Z M 16,9 L 20,13 M 20,9 L 16,13"  // speaker + X
+        : "M 2,7 H 7 L 12,3 V 17 L 7,13 H 2 Z M 14,6 Q 17,10 14,14 M 15,4 Q 20,10 15,16"; // speaker + waves
+
+    /// <summary>Tool tip for the mute toggle button.</summary>
+    public string MuteToolTip => _snapshot.IsMuted ? "Unmute" : "Mute";
+
+    // ── Transport commands ───────────────────────────────────────────────────
 
     /// <summary>Previous track.</summary>
     public AsyncRelayCommand PreviousCommand { get; }
@@ -130,6 +198,33 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     /// <summary>Next track.</summary>
     public AsyncRelayCommand NextCommand { get; }
+
+    /// <summary>
+    /// Seek command. Bound to the progress <see cref="Slider"/> value.
+    /// Accepts a <c>double</c> (seconds) from the slider thumb.
+    /// </summary>
+    public AsyncRelayCommand<double> SeekCommand { get; }
+
+    // ── Session-picker commands ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Pins a session by AUMID. Bound to each session-picker button;
+    /// <c>CommandParameter</c> is the session's
+    /// <see cref="MediaSessionInfo.SourceAppUserModelId"/>.
+    /// </summary>
+    public AsyncRelayCommand<string> SelectSessionCommand { get; }
+
+    // ── Volume commands ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sets the master volume. Accepts a <c>double</c> in [0, 100]
+    /// (percent) from the volume slider; divides by 100 before
+    /// forwarding to the service.
+    /// </summary>
+    public AsyncRelayCommand<double> SetVolumeCommand { get; }
+
+    /// <summary>Toggles mute on the current audio session.</summary>
+    public AsyncRelayCommand ToggleMuteCommand { get; }
 
     /// <inheritdoc/>
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -151,24 +246,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _ticker = ticker;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
 
-        // Build the four commands. canExecute is re-evaluated
-        // every time the user clicks (the command's latch blocks
-        // overlapping clicks), and re-evaluation is forced by
-        // RaiseCanExecuteChanged() inside OnSnapshot — see below.
-        // Use the parameterless ctor: these commands don't bind a
-        // CommandParameter from XAML, and the parameterless form
-        // sidesteps the lambda forwarding.
         PreviousCommand = new AsyncRelayCommand(
             execute: () => _service.PreviousAsync(),
             canExecute: () => _snapshot.Playback.Capabilities.CanGoPrevious);
 
         TogglePlayPauseCommand = new AsyncRelayCommand(
             execute: () => _service.TogglePlayPauseAsync(),
-            // Mirror the service-side gate (Task 5b gotcha #4):
-            // CanPlay || CanPause. Splitting these into separate
-            // buttons would diverge from the guard.
             canExecute: () => _snapshot.Playback.Capabilities.CanPlay
-                          || _snapshot.Playback.Capabilities.CanPause);
+                           || _snapshot.Playback.Capabilities.CanPause);
 
         StopCommand = new AsyncRelayCommand(
             execute: () => _service.StopAsync(),
@@ -178,7 +263,24 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             execute: () => _service.NextAsync(),
             canExecute: () => _snapshot.Playback.Capabilities.CanGoNext);
 
-        _service.SnapshotChanged += OnSnapshot;
+        SeekCommand = new AsyncRelayCommand<double>(
+            execute: seconds => _service.SeekAsync(seconds),
+            canExecute: _ => _snapshot.Playback.Capabilities.CanSeek);
+
+        SelectSessionCommand = new AsyncRelayCommand<string>(
+            execute: aumid => _service.SelectSessionAsync(aumid ?? string.Empty),
+            canExecute: _ => true);
+
+        SetVolumeCommand = new AsyncRelayCommand<double>(
+            execute: pct => _service.SetVolumeAsync(pct / 100.0),
+            canExecute: _ => HasMedia);
+
+        ToggleMuteCommand = new AsyncRelayCommand(
+            execute: () => _service.ToggleMuteAsync(),
+            canExecute: () => HasMedia);
+
+        _service.SnapshotChanged   += OnSnapshot;
+        _service.SessionListChanged += OnSessionListChanged;
     }
 
     private void OnSnapshot(object? sender, MediaSessionSnapshot snapshot)
@@ -189,6 +291,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         UpdateTicker();
         RaiseAllChanged();
         RaiseCommandStates();
+    }
+
+    private void OnSessionListChanged(object? sender, EventArgs e)
+    {
+        if (_disposed) return;
+        OnPropertyChanged(nameof(AvailableSessions));
+        OnPropertyChanged(nameof(HasMultipleSessions));
     }
 
     /// <summary>
@@ -212,32 +321,38 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private void OnTick()
     {
         if (_disposed) return;
-        // Re-evaluate the ticker first: if the user hid the
-        // popover or the source paused during the dispatch, stop
-        // the timer instead of leaving it running.
         UpdateTicker();
-        // Notify just the position properties — the rest of the
-        // snapshot hasn't changed.
         OnPropertyChanged(nameof(PositionSeconds));
         OnPropertyChanged(nameof(ElapsedTimeText));
     }
 
     private void RaiseAllChanged()
     {
-        // The exhaustive list of properties derived from the
-        // snapshot. Adding a new bindable property here is the
-        // only place to update.
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(Artist));
         OnPropertyChanged(nameof(AlbumTitle));
         OnPropertyChanged(nameof(Artwork));
         OnPropertyChanged(nameof(SourceAppUserModelId));
+        OnPropertyChanged(nameof(SourceAppName));
         OnPropertyChanged(nameof(IsPlaying));
+        OnPropertyChanged(nameof(PlayPauseIcon));
+        OnPropertyChanged(nameof(PlayPausePathData));
+        OnPropertyChanged(nameof(PlayPauseToolTip));
         OnPropertyChanged(nameof(HasMedia));
+        OnPropertyChanged(nameof(CanSeek));
         OnPropertyChanged(nameof(PositionSeconds));
         OnPropertyChanged(nameof(DurationSeconds));
         OnPropertyChanged(nameof(ElapsedTimeText));
         OnPropertyChanged(nameof(DurationTimeText));
+        // Session picker
+        OnPropertyChanged(nameof(AvailableSessions));
+        OnPropertyChanged(nameof(HasMultipleSessions));
+        // Volume / mute
+        OnPropertyChanged(nameof(Volume));
+        OnPropertyChanged(nameof(VolumePercent));
+        OnPropertyChanged(nameof(IsMuted));
+        OnPropertyChanged(nameof(MuteIconPathData));
+        OnPropertyChanged(nameof(MuteToolTip));
     }
 
     private void RaiseCommandStates()
@@ -246,6 +361,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         TogglePlayPauseCommand.RaiseCanExecuteChanged();
         StopCommand.RaiseCanExecuteChanged();
         NextCommand.RaiseCanExecuteChanged();
+        SeekCommand.RaiseCanExecuteChanged();
+        SelectSessionCommand.RaiseCanExecuteChanged();
+        SetVolumeCommand.RaiseCanExecuteChanged();
+        ToggleMuteCommand.RaiseCanExecuteChanged();
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
@@ -265,7 +384,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     /// <c>m:ss</c> under an hour, <c>h:mm:ss</c> over.
     /// </summary>
     internal static string FormatTime(TimeSpan ts)
-        => TrackDot.Converters.MainViewModelHelpers.FormatTime(ts);
+        => MainViewModelHelpers.FormatTime(ts);
 
     /// <inheritdoc/>
     public void Dispose()
@@ -273,6 +392,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         if (_disposed) return;
         _disposed = true;
         _ticker.Stop();
-        _service.SnapshotChanged -= OnSnapshot;
+        _service.SnapshotChanged    -= OnSnapshot;
+        _service.SessionListChanged -= OnSessionListChanged;
     }
 }

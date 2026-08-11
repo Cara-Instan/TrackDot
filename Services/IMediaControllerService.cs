@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using TrackDot.Models;
@@ -30,6 +31,52 @@ public interface IMediaControllerService : IAsyncDisposable
     /// Subscribers run on the WPF dispatcher thread.
     /// </summary>
     event EventHandler<MediaSessionSnapshot>? SnapshotChanged;
+
+    // ── Feature 9 — Multi-Session Picker ────────────────────────────────
+
+    /// <summary>
+    /// The live list of all SMTC sessions known to the system, in the
+    /// order returned by <c>GetSessions()</c>. Always non-null;
+    /// defaults to an empty list until <see cref="InitializeAsync"/>
+    /// has run. The item whose <c>IsCurrent</c> flag is true is the
+    /// session that produced <see cref="Current"/>.
+    /// </summary>
+    IReadOnlyList<MediaSessionInfo> AvailableSessions { get; }
+
+    /// <summary>
+    /// Raised on the WPF dispatcher thread whenever the set of
+    /// available sessions changes (sources opened, closed, or
+    /// reordered). Subscribers should re-read
+    /// <see cref="AvailableSessions"/> in response.
+    /// </summary>
+    event EventHandler? SessionListChanged;
+
+    /// <summary>
+    /// Pins the session identified by <paramref name="sourceAppUserModelId"/>
+    /// as the active session. The popover will show that session's
+    /// metadata until the user picks another or the session closes.
+    /// Returns immediately if no matching session is found.
+    /// </summary>
+    Task SelectSessionAsync(string sourceAppUserModelId);
+
+    // ── Feature 10 — Volume / Mute Controls ─────────────────────────────
+
+    /// <summary>
+    /// Sets the master volume of the audio session that belongs to the
+    /// current SMTC source application. <paramref name="volume"/> must
+    /// be in [0.0, 1.0]. No-op when no CoreAudio session can be
+    /// matched, or when there is no active SMTC session.
+    /// </summary>
+    Task SetVolumeAsync(double volume);
+
+    /// <summary>
+    /// Toggles the mute state of the audio session that belongs to the
+    /// current SMTC source application. No-op when no CoreAudio
+    /// session can be matched.
+    /// </summary>
+    Task ToggleMuteAsync();
+
+    // ── Transport ────────────────────────────────────────────────────────
 
     /// <summary>
     /// Asynchronously acquires the system media session manager and
@@ -63,4 +110,11 @@ public interface IMediaControllerService : IAsyncDisposable
     /// if unsupported.
     /// </summary>
     Task NextAsync();
+
+    /// <summary>
+    /// Seeks to <paramref name="positionSeconds"/> in the active session.
+    /// Returns immediately if there is no session or seeking is not supported.
+    /// </summary>
+    /// <param name="positionSeconds">Target playback position in seconds.</param>
+    Task SeekAsync(double positionSeconds);
 }

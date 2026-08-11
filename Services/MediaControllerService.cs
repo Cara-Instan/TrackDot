@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Media;
 using TrackDot.Models;
+using TrackDot.ViewModels;
 using Windows.Media.Control;
 
 namespace TrackDot.Services;
@@ -45,12 +48,20 @@ public sealed class MediaControllerService : IMediaControllerService
 {
     private readonly SynchronizationContext _context;
     private readonly object _gate = new();
+    private readonly AudioVolumeService _volumeService;
 
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
     private GlobalSystemMediaTransportControlsSession? _currentSession;
+
+    // Pinned AUMID from SelectSessionAsync. Null means "follow OS default".
+    private string? _pinnedAumid;
+
     private int _generation;
     private bool _initialized;
     private bool _disposed;
+
+    // Feature 9 — session list
+    private IReadOnlyList<MediaSessionInfo> _availableSessions = Array.Empty<MediaSessionInfo>();
 
     /// <summary>
     /// Builds a service that marshals every published snapshot to
@@ -65,6 +76,7 @@ public sealed class MediaControllerService : IMediaControllerService
                 "No SynchronizationContext was supplied and none is current. " +
                 "Construct MediaControllerService from a thread with an installed context " +
                 "(e.g. the WPF UI thread).");
+        _volumeService = new AudioVolumeService();
     }
 
     /// <summary>
@@ -120,6 +132,71 @@ public sealed class MediaControllerService : IMediaControllerService
     /// <inheritdoc/>
     public event EventHandler<MediaSessionSnapshot>? SnapshotChanged;
 
+    // ── Feature 9 ───────────────────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public IReadOnlyList<MediaSessionInfo> AvailableSessions
+        => Volatile.Read(ref _availableSessions);
+
+    /// <inheritdoc/>
+    public event EventHandler? SessionListChanged;
+
+    /// <inheritdoc/>
+    public async Task SelectSessionAsync(string sourceAppUserModelId)
+    {
+        if (_disposed) return;
+        if (string.IsNullOrEmpty(sourceAppUserModelId)) return;
+
+        var manager = _manager;
+        if (manager is null) return;
+
+        // Find the requested session in the live list
+        var sessions = manager.GetSessions();
+        GlobalSystemMediaTransportControlsSession? target = null;
+        foreach (var s in sessions)
+        {
+            if (string.Equals(s.SourceAppUserModelId, sourceAppUserModelId,
+                              StringComparison.OrdinalIgnoreCase))
+            {
+                target = s;
+                break;
+            }
+        }
+        if (target is null) return;
+
+        // Store the pin BEFORE adopting the session so that subsequent
+        // CurrentSessionChanged events respect the user's choice.
+        lock (_gate) { _pinnedAumid = sourceAppUserModelId; }
+
+        await SetCurrentSessionAsync(target).ConfigureAwait(true);
+    }
+
+    // ── Feature 10 ──────────────────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public Task SetVolumeAsync(double volume)
+    {
+        if (_disposed) return Task.CompletedTask;
+        var aumid = Volatile.Read(ref _currentSnapshot).SourceAppUserModelId;
+        _volumeService.SetVolume(aumid, (float)Math.Clamp(volume, 0.0, 1.0));
+        PublishVolumeUpdate();
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc/>
+    public Task ToggleMuteAsync()
+    {
+        if (_disposed) return Task.CompletedTask;
+        var aumid = Volatile.Read(ref _currentSnapshot).SourceAppUserModelId;
+        if (string.IsNullOrEmpty(aumid)) return Task.CompletedTask;
+        var (_, currentMute) = _volumeService.GetVolumeInfo(aumid);
+        _volumeService.SetMute(aumid, !currentMute);
+        PublishVolumeUpdate();
+        return Task.CompletedTask;
+    }
+
+    // ── Core SMTC init ──────────────────────────────────────────────────────
+
     /// <inheritdoc/>
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -127,39 +204,26 @@ public sealed class MediaControllerService : IMediaControllerService
 
         lock (_gate)
         {
-            if (_initialized)
-            {
-                return;
-            }
+            if (_initialized) return;
             _initialized = true;
         }
 
-        // RequestAsync() yields the system SMTC manager. The first
-        // call may take a moment; subsequent calls are cheap. We do
-        // NOT hold the lock across the await - the manager hands
-        // itself back on a worker thread and we want other
-        // initialisation paths (status, etc.) to make progress.
         var manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync()
             .AsTask(cancellationToken)
             .ConfigureAwait(true);
 
         lock (_gate)
         {
-            // Another thread may have raced us to initialize. If
-            // the manager is already set, discard ours - we will
-            // not subscribe twice.
-            if (_manager is not null)
-            {
-                return;
-            }
+            if (_manager is not null) return;
             _manager = manager;
         }
 
         manager.CurrentSessionChanged += OnCurrentSessionChanged;
+        manager.SessionsChanged       += OnSessionsChanged;
 
-        // Publish Empty first, then adopt whatever session the
-        // manager already tracks (typically the OS-default media
-        // app, e.g. Spotify if it was running at boot).
+        // Publish an initial session list, then adopt the current session.
+        RefreshSessionList(manager);
+
         var initial = manager.GetCurrentSession();
         if (initial is null)
         {
@@ -170,6 +234,8 @@ public sealed class MediaControllerService : IMediaControllerService
             await SetCurrentSessionAsync(initial).ConfigureAwait(true);
         }
     }
+
+    // ── Transport commands ───────────────────────────────────────────────────
 
     /// <inheritdoc/>
     public Task TogglePlayPauseAsync()
@@ -203,22 +269,28 @@ public sealed class MediaControllerService : IMediaControllerService
             capability: caps => caps.CanGoNext,
             action: static session => session.TrySkipNextAsync().AsTask());
 
+    /// <inheritdoc/>
+    public Task SeekAsync(double positionSeconds)
+    {
+        if (_disposed) return Task.CompletedTask;
+        var ticks = (long)(positionSeconds * TimeSpan.TicksPerSecond);
+        var position = TimeSpan.FromTicks(Math.Max(0, ticks));
+
+        var session = Volatile.Read(ref _currentSession);
+        if (session is null) return Task.CompletedTask;
+
+        return session.TryChangePlaybackPositionAsync(position.Ticks).AsTask();
+    }
+
     private static bool CanTogglePlayPause(TransportCapabilities caps)
     {
-        // Play/Pause is one button that maps to either Play or Pause
-        // depending on the current state. Treat the command as
-        // supported if EITHER flag is true - the service picks the
-        // right direction at dispatch time.
         return caps.CanPlay || caps.CanPause;
     }
-    // -------------------------------------------------------------------
-    // Session replacement (the heart of the generation guard)
-    // -------------------------------------------------------------------
+
+    // ── Session replacement ──────────────────────────────────────────────────
 
     private async Task SetCurrentSessionAsync(GlobalSystemMediaTransportControlsSession? session)
     {
-        // Detach from any previous session BEFORE attaching to the
-        // new one - never subscribe twice, never leak a handler.
         GlobalSystemMediaTransportControlsSession? previous;
         int generation;
         lock (_gate)
@@ -231,8 +303,8 @@ public sealed class MediaControllerService : IMediaControllerService
 
         if (previous is not null)
         {
-            previous.MediaPropertiesChanged  -= OnMediaPropertiesChanged;
-            previous.PlaybackInfoChanged     -= OnPlaybackInfoChanged;
+            previous.MediaPropertiesChanged   -= OnMediaPropertiesChanged;
+            previous.PlaybackInfoChanged      -= OnPlaybackInfoChanged;
             previous.TimelinePropertiesChanged -= OnTimelinePropertiesChanged;
         }
 
@@ -246,28 +318,17 @@ public sealed class MediaControllerService : IMediaControllerService
         session.PlaybackInfoChanged       += OnPlaybackInfoChanged;
         session.TimelinePropertiesChanged += OnTimelinePropertiesChanged;
 
-        // Kick off the initial read for each of the three property
-        // groups. Each continuation captures its generation in a
-        // local; stale completions are silently discarded.
         await RefreshMediaPropertiesAsync(session, generation).ConfigureAwait(true);
         RefreshPlaybackInfoAsync(session, generation);
         RefreshTimelinePropertiesAsync(session, generation);
     }
 
-    // -------------------------------------------------------------------
-    // Event handlers (run on WinRT thread-pool threads, never on the UI)
-    // -------------------------------------------------------------------
+    // ── Event handlers ───────────────────────────────────────────────────────
 
     private void OnCurrentSessionChanged(
         GlobalSystemMediaTransportControlsSessionManager sender,
         CurrentSessionChangedEventArgs args)
-    {
-        // Marshal to the UI thread BEFORE we touch any state. The
-        // GetCurrentSession() call itself is safe off-thread, but
-        // SetCurrentSessionAsync mutates fields and ultimately
-        // publishes to subscribers that bind to the dispatcher.
-        Post(() => _ = HandleCurrentSessionChangedAsync());
-    }
+        => Post(() => _ = HandleCurrentSessionChangedAsync());
 
     private async Task HandleCurrentSessionChangedAsync()
     {
@@ -276,9 +337,50 @@ public sealed class MediaControllerService : IMediaControllerService
         var manager = _manager;
         if (manager is null) return;
 
-        var next = manager.GetCurrentSession();
+        // Respect the user's pinned session if it still exists.
+        string? pinned;
+        lock (_gate) { pinned = _pinnedAumid; }
+
+        GlobalSystemMediaTransportControlsSession? next;
+        if (pinned is not null)
+        {
+            var sessions = manager.GetSessions();
+            next = null;
+            foreach (var s in sessions)
+            {
+                if (string.Equals(s.SourceAppUserModelId, pinned,
+                                  StringComparison.OrdinalIgnoreCase))
+                {
+                    next = s;
+                    break;
+                }
+            }
+            // Pinned source disappeared — fall back to OS default and clear pin.
+            if (next is null)
+            {
+                lock (_gate) { _pinnedAumid = null; }
+                next = manager.GetCurrentSession();
+            }
+        }
+        else
+        {
+            next = manager.GetCurrentSession();
+        }
+
+        // Refresh the session list regardless of which session we adopt.
+        RefreshSessionList(manager);
         await SetCurrentSessionAsync(next).ConfigureAwait(true);
     }
+
+    private void OnSessionsChanged(
+        GlobalSystemMediaTransportControlsSessionManager sender,
+        SessionsChangedEventArgs args)
+        => Post(() =>
+        {
+            if (_disposed) return;
+            if (_manager is null) return;
+            RefreshSessionList(_manager);
+        });
 
     private void OnMediaPropertiesChanged(
         GlobalSystemMediaTransportControlsSession sender,
@@ -295,9 +397,36 @@ public sealed class MediaControllerService : IMediaControllerService
         TimelinePropertiesChangedEventArgs args)
         => Post(() => RefreshTimelinePropertiesAsync(sender, Volatile.Read(ref _generation)));
 
-    // -------------------------------------------------------------------
-    // Async property reads - generation guarded
-    // -------------------------------------------------------------------
+    // ── Session list ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Rebuilds <see cref="AvailableSessions"/> from the live SMTC
+    /// session list and raises <see cref="SessionListChanged"/>.
+    /// Must be called on the UI thread.
+    /// </summary>
+    private void RefreshSessionList(GlobalSystemMediaTransportControlsSessionManager manager)
+    {
+        if (_disposed) return;
+
+        var current = Volatile.Read(ref _currentSnapshot);
+        var currentAumid = current.SourceAppUserModelId;
+
+        var sessions = manager.GetSessions();
+        var list = new List<MediaSessionInfo>(sessions.Count);
+        foreach (var s in sessions)
+        {
+            var aumid = s.SourceAppUserModelId ?? string.Empty;
+            list.Add(new MediaSessionInfo(
+                SourceAppUserModelId: aumid,
+                DisplayName: MainViewModelHelpers.FormatAppName(aumid),
+                IsCurrent: string.Equals(aumid, currentAumid, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        Volatile.Write(ref _availableSessions, list);
+        SessionListChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // ── Async property reads — generation guarded ────────────────────────────
 
     private async Task RefreshMediaPropertiesAsync(
         GlobalSystemMediaTransportControlsSession session, int generation)
@@ -308,8 +437,6 @@ public sealed class MediaControllerService : IMediaControllerService
             if (!IsCurrentGeneration(generation)) return;
             if (props is null) return;
 
-            // Decode artwork via the (Task 4) pipeline. Stubbed for
-            // now to keep this commit scope-bounded.
             var artwork = await DecodeArtworkAsync(props.Thumbnail).ConfigureAwait(true);
             if (!IsCurrentGeneration(generation)) return;
 
@@ -321,10 +448,7 @@ public sealed class MediaControllerService : IMediaControllerService
         }
         catch (Exception)
         {
-            // SMTC may throw transient COM errors when the source
-            // app is torn down mid-read. Swallow and let the next
-            // authoritative event try again. Logging is owned by
-            // Task 9.
+            // Transient COM error — let the next authoritative event retry.
         }
     }
 
@@ -338,10 +462,7 @@ public sealed class MediaControllerService : IMediaControllerService
 
             PublishPlaybackInfoUpdate(info);
         }
-        catch (Exception)
-        {
-            // Same rationale as RefreshMediaPropertiesAsync.
-        }
+        catch (Exception) { }
     }
 
     private void RefreshTimelinePropertiesAsync(
@@ -354,36 +475,14 @@ public sealed class MediaControllerService : IMediaControllerService
 
             PublishTimelineUpdate(timeline);
         }
-        catch (Exception)
-        {
-            // Same rationale.
-        }
+        catch (Exception) { }
     }
 
-    /// <summary>
-    /// Decodes the SMTC media-properties thumbnail via
-    /// <see cref="ThumbnailDecoder"/>. The runtime class
-    /// <c>IRandomAccessStreamReference</c> is projected into a
-    /// managed <c>Stream</c> here so the decoder itself stays
-    /// testable without a live SMTC session.
-    /// </summary>
-    /// <param name="thumbnail">
-    /// <see cref="GlobalSystemMediaTransportControlsSessionMediaProperties.Thumbnail"/>
-    /// typed as <see cref="object"/> to avoid forcing a WinRT-using
-    /// directive on every file that touches this method. SMTC may
-    /// return null when the source app has not populated artwork.
-    /// </param>
     private static Task<ImageSource?> DecodeArtworkAsync(object? thumbnail)
     {
         if (thumbnail is null)
-        {
             return Task.FromResult<ImageSource?>(null);
-        }
 
-        // Adapter: IRandomAccessStreamReference.OpenReadAsync()
-        // returns IAsyncOperation<IRandomAccessStreamWithContentType>;
-        // we convert to IAsyncOperation<IInputStream>, project to
-        // Task<IRandomAccessStream>, then to a managed Stream.
         return ThumbnailDecoder.DecodeAsync(
             openStream: () =>
             {
@@ -399,9 +498,7 @@ public sealed class MediaControllerService : IMediaControllerService
         return winrtStream.AsStreamForRead();
     }
 
-    // -------------------------------------------------------------------
-    // Publish path - all UI thread, all generation-guarded
-    // -------------------------------------------------------------------
+    // ── Publish path ─────────────────────────────────────────────────────────
 
     private void PublishMediaUpdate(
         string title, string artist, string albumTitle, ImageSource? artwork)
@@ -414,7 +511,6 @@ public sealed class MediaControllerService : IMediaControllerService
             Title      = title      ?? string.Empty,
             Artist     = artist     ?? string.Empty,
             AlbumTitle = albumTitle ?? string.Empty,
-            // Task 4 will plumb a frozen ImageSource through here.
             Artwork    = artwork ?? previous.Artwork,
         };
 
@@ -432,15 +528,13 @@ public sealed class MediaControllerService : IMediaControllerService
                 CanPause:      c.IsPauseEnabled,
                 CanStop:       c.IsStopEnabled,
                 CanGoPrevious: c.IsPreviousEnabled,
-                CanGoNext:     c.IsNextEnabled)
+                CanGoNext:     c.IsNextEnabled,
+                CanSeek:       c.IsPlaybackPositionEnabled)
             : null;
 
         var playbackInfoShape = new MediaPropertyMapper.PlaybackInfoShape(info.PlaybackStatus, controlsShape);
 
         var previous = Volatile.Read(ref _currentSnapshot);
-        // Keep the previous timeline - a playback-only update should
-        // not reset position/start/end. Use the previous timeline's
-        // own LastUpdated as the baseline if we had one.
         var timelineShape = new MediaPropertyMapper.TimelineShape(
             Position:    previous.Playback.Position,
             StartTime:   previous.Playback.StartTime,
@@ -469,8 +563,6 @@ public sealed class MediaControllerService : IMediaControllerService
             LastUpdated: DateTimeOffset.UtcNow);
 
         var previous = Volatile.Read(ref _currentSnapshot);
-        // Keep the previous playback status/controls - a timeline-
-        // only update should not flip state or capabilities.
         var playbackInfoShape = new MediaPropertyMapper.PlaybackInfoShape(
             Status: PlaybackStateToSmts(previous.Playback.State),
             Controls: new MediaPropertyMapper.ControlsShape(
@@ -478,7 +570,8 @@ public sealed class MediaControllerService : IMediaControllerService
                 CanPause:      previous.Playback.Capabilities.CanPause,
                 CanStop:       previous.Playback.Capabilities.CanStop,
                 CanGoPrevious: previous.Playback.Capabilities.CanGoPrevious,
-                CanGoNext:     previous.Playback.Capabilities.CanGoNext));
+                CanGoNext:     previous.Playback.Capabilities.CanGoNext,
+                CanSeek:       previous.Playback.Capabilities.CanSeek));
 
         var playback = MediaPropertyMapper.BuildPlaybackSnapshot(
             playbackInfo: playbackInfoShape,
@@ -487,6 +580,22 @@ public sealed class MediaControllerService : IMediaControllerService
 
         var next = previous with { Playback = playback };
 
+        Volatile.Write(ref _currentSnapshot, next);
+        SnapshotChanged?.Invoke(this, next);
+    }
+
+    /// <summary>
+    /// Re-reads volume/mute from CoreAudio for the current SMTC source
+    /// and publishes a refreshed snapshot. Called after
+    /// <see cref="SetVolumeAsync"/> and <see cref="ToggleMuteAsync"/>
+    /// complete so the view model sees the updated values immediately.
+    /// </summary>
+    private void PublishVolumeUpdate()
+    {
+        if (_disposed) return;
+        var previous = Volatile.Read(ref _currentSnapshot);
+        var (vol, muted) = _volumeService.GetVolumeInfo(previous.SourceAppUserModelId);
+        var next = previous with { Volume = vol, IsMuted = muted };
         Volatile.Write(ref _currentSnapshot, next);
         SnapshotChanged?.Invoke(this, next);
     }
@@ -511,28 +620,14 @@ public sealed class MediaControllerService : IMediaControllerService
         SnapshotChanged?.Invoke(this, snapshot);
     }
 
-    // -------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------
+    // ── Helpers ──────────────────────────────────────────────────────────────
 
     private bool IsCurrentGeneration(int generation)
-    {
-        var current = Volatile.Read(ref _generation);
-        return generation == current;
-    }
+        => generation == Volatile.Read(ref _generation);
 
-    /// <summary>
-    /// Marshals <paramref name="callback"/> to the captured
-    /// synchronization context. Used by every WinRT event handler so
-    /// that state mutation happens on the UI thread.
-    /// </summary>
     private void Post(Action callback)
     {
         if (_disposed) return;
-
-        // _context.Post never blocks the caller; if the context has
-        // been shut down (e.g. the dispatcher closed) the callback
-        // is silently dropped, which matches our semantics.
         _context.Post(_ =>
         {
             if (_disposed) return;
@@ -540,13 +635,6 @@ public sealed class MediaControllerService : IMediaControllerService
         }, null);
     }
 
-    /// <summary>
-    /// Wraps the WinRT-specific dispatch path with the three guards
-    /// (no-session, capability short-circuit, failed-try refresh).
-    /// The pure guard logic lives in
-    /// <see cref="DispatchGuardedCommandAsync"/>, which the unit
-    /// tests exercise without a live WinRT session.
-    /// </summary>
     private Task InvokeOnSessionAsync(
         Func<TransportCapabilities, bool> capability,
         Func<GlobalSystemMediaTransportControlsSession, Task<bool>> action)
@@ -565,45 +653,6 @@ public sealed class MediaControllerService : IMediaControllerService
                 RefreshPlaybackInfoAsync(session, Volatile.Read(ref _generation));
             });
 
-    /// <summary>
-    /// Pure guard logic for a transport command. Used both by the
-    /// production path (via <see cref="InvokeOnSessionAsync"/>) and
-    /// by unit tests, which pass delegate-based fakes for
-    /// <paramref name="tryCommand"/> and <paramref name="refresh"/>.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Three guards run in order:
-    /// </para>
-    /// <list type="number">
-    ///   <item>
-    ///     <b>Disposed short-circuit.</b> If the service has been
-    ///     disposed, returns immediately.
-    ///   </item>
-    ///   <item>
-    ///     <b>Capability short-circuit.</b> Reads the cached
-    ///     <see cref="TransportCapabilities"/> from
-    ///     <see cref="_currentSnapshot"/> and skips the dispatch
-    ///     when <paramref name="capability"/> returns false. This is
-    ///     the second line of defence below <c>canExecute</c>, and
-    ///     necessary for headless callers that do not consult the
-    ///     UI.
-    ///   </item>
-    ///   <item>
-    ///     <b>Failed-try refresh.</b> A <c>false</c> return or
-    ///     thrown exception from <paramref name="tryCommand"/>
-    ///     triggers <paramref name="refresh"/>, which re-reads
-    ///     playback info on the captured session, republishes the
-    ///     snapshot, and (through the view-model's
-    ///     <c>RaiseCanExecuteChanged</c>) refreshes the button
-    ///     state.
-    ///   </item>
-    /// </list>
-    /// <para>
-    /// Exposed as <c>internal</c> so unit tests can drive every
-    /// branch without a WinRT session.
-    /// </para>
-    /// </remarks>
     internal async Task DispatchGuardedCommandAsync(
         Func<TransportCapabilities, bool> capability,
         Func<Task<bool>> tryCommand,
@@ -625,19 +674,11 @@ public sealed class MediaControllerService : IMediaControllerService
         }
         catch (Exception)
         {
-            // Source app rejected the command (e.g. session
-            // closing mid-dispatch). Schedule a playback refresh so
-            // the next authoritative state is observed promptly.
             refresh();
             return;
         }
 
-        if (!success)
-        {
-            // Session refused the command - capability may have
-            // flipped, the session may be tearing down. Refresh.
-            refresh();
-        }
+        if (!success) refresh();
     }
 
     /// <inheritdoc/>
@@ -662,6 +703,7 @@ public sealed class MediaControllerService : IMediaControllerService
         if (manager is not null)
         {
             manager.CurrentSessionChanged -= OnCurrentSessionChanged;
+            manager.SessionsChanged       -= OnSessionsChanged;
         }
 
         if (session is not null)
@@ -671,12 +713,10 @@ public sealed class MediaControllerService : IMediaControllerService
             session.TimelinePropertiesChanged -= OnTimelinePropertiesChanged;
         }
 
-        // Best-effort: bump the generation so any in-flight
-        // continuations drop their results.
         Volatile.Write(ref _generation, _generation + 1);
 
-        // Hand back to the caller's task scheduler. The service
-        // has no managed resources to release beyond the lock.
+        _volumeService.Dispose();
+
         await Task.CompletedTask.ConfigureAwait(false);
     }
 }

@@ -19,6 +19,13 @@ namespace TrackDot.Models;
 /// safe to read on the WPF UI thread. Decode happens in the
 /// controller service before publishing.
 /// </para>
+/// <para>
+/// <see cref="Volume"/> and <see cref="IsMuted"/> are sourced from
+/// the CoreAudio <c>ISimpleAudioVolume</c> API (not SMTC) and are
+/// updated whenever the active session changes or a volume/mute
+/// command completes. They default to <c>1.0 / false</c> when no
+/// CoreAudio session can be matched to the current SMTC source.
+/// </para>
 /// </remarks>
 public sealed record MediaSessionSnapshot(
     string? SourceAppUserModelId,
@@ -26,14 +33,17 @@ public sealed record MediaSessionSnapshot(
     string Artist,
     string AlbumTitle,
     ImageSource? Artwork,
-    PlaybackSnapshot Playback)
+    PlaybackSnapshot Playback,
+    double Volume = 1.0,
+    bool IsMuted = false)
 {
     /// <summary>
     /// Neutral snapshot for "no active session". Title/artist/album
-    /// are empty strings, artwork is null, and playback is
-    /// <see cref="PlaybackSnapshot.Empty"/>. View-model code can
-    /// treat <see cref="Empty"/> as a single safe default and apply
-    /// user-facing fallbacks (e.g. "Nothing playing") at the view layer.
+    /// are empty strings, artwork is null, playback is
+    /// <see cref="PlaybackSnapshot.Empty"/>, volume is 1.0, and
+    /// muted is false. View-model code can treat <see cref="Empty"/>
+    /// as a single safe default and apply user-facing fallbacks (e.g.
+    /// "Nothing playing") at the view layer.
     /// </summary>
     public static readonly MediaSessionSnapshot Empty = new(
         SourceAppUserModelId: null,
@@ -41,5 +51,7 @@ public sealed record MediaSessionSnapshot(
         Artist: string.Empty,
         AlbumTitle: string.Empty,
         Artwork: null,
-        Playback: PlaybackSnapshot.Empty);
+        Playback: PlaybackSnapshot.Empty,
+        Volume: 1.0,
+        IsMuted: false);
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using TrackDot.Models;
@@ -17,12 +18,51 @@ namespace TrackDot.Tests.Fakes;
 public sealed class FakeMediaControllerService : IMediaControllerService
 {
     private MediaSessionSnapshot _current = MediaSessionSnapshot.Empty;
+    private IReadOnlyList<MediaSessionInfo> _availableSessions = Array.Empty<MediaSessionInfo>();
 
     /// <summary>The most recent snapshot, defaulting to <see cref="MediaSessionSnapshot.Empty"/>.</summary>
     public MediaSessionSnapshot Current => _current;
 
     /// <inheritdoc/>
     public event EventHandler<MediaSessionSnapshot>? SnapshotChanged;
+
+    // ── Feature 9 ───────────────────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public IReadOnlyList<MediaSessionInfo> AvailableSessions => _availableSessions;
+
+    /// <inheritdoc/>
+    public event EventHandler? SessionListChanged;
+
+    /// <summary>How many times <see cref="SelectSessionAsync"/> was called.</summary>
+    public int SelectSessionCallCount { get; private set; }
+
+    /// <summary>The last AUMID passed to <see cref="SelectSessionAsync"/>.</summary>
+    public string? LastSelectedAumid { get; private set; }
+
+    /// <summary>
+    /// Replaces <see cref="AvailableSessions"/> and raises
+    /// <see cref="SessionListChanged"/>. Tests call this to drive session
+    /// list transitions.
+    /// </summary>
+    public void PublishSessionList(IReadOnlyList<MediaSessionInfo> sessions)
+    {
+        _availableSessions = sessions;
+        SessionListChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // ── Feature 10 ──────────────────────────────────────────────────────────
+
+    /// <summary>How many times <see cref="SetVolumeAsync"/> was called.</summary>
+    public int SetVolumeCallCount { get; private set; }
+
+    /// <summary>The last volume value passed to <see cref="SetVolumeAsync"/>.</summary>
+    public double LastSetVolume { get; private set; }
+
+    /// <summary>How many times <see cref="ToggleMuteAsync"/> was called.</summary>
+    public int ToggleMuteCallCount { get; private set; }
+
+    // ── Call counters ────────────────────────────────────────────────────────
 
     /// <summary>How many times <see cref="InitializeAsync"/> was called.</summary>
     public int InitializeCallCount { get; private set; }
@@ -35,6 +75,7 @@ public sealed class FakeMediaControllerService : IMediaControllerService
     public int PreviousCallCount { get; private set; }
     public int StopCallCount { get; private set; }
     public int NextCallCount { get; private set; }
+    public int SeekCallCount { get; private set; }
 
     /// <summary>
     /// Set true to make every command throw, so the view-model's
@@ -63,6 +104,29 @@ public sealed class FakeMediaControllerService : IMediaControllerService
         SnapshotChanged?.Invoke(this, snapshot);
     }
 
+    public Task SelectSessionAsync(string sourceAppUserModelId)
+    {
+        SelectSessionCallCount++;
+        LastSelectedAumid = sourceAppUserModelId;
+        if (ThrowOnCommand) throw new InvalidOperationException("fake: SelectSession refused");
+        return Task.CompletedTask;
+    }
+
+    public Task SetVolumeAsync(double volume)
+    {
+        SetVolumeCallCount++;
+        LastSetVolume = volume;
+        if (ThrowOnCommand) throw new InvalidOperationException("fake: SetVolume refused");
+        return Task.CompletedTask;
+    }
+
+    public Task ToggleMuteAsync()
+    {
+        ToggleMuteCallCount++;
+        if (ThrowOnCommand) throw new InvalidOperationException("fake: ToggleMute refused");
+        return Task.CompletedTask;
+    }
+
     public Task TogglePlayPauseAsync()
     {
         TogglePlayPauseCallCount++;
@@ -88,6 +152,13 @@ public sealed class FakeMediaControllerService : IMediaControllerService
     {
         NextCallCount++;
         if (ThrowOnCommand) throw new InvalidOperationException("fake: Next refused");
+        return Task.CompletedTask;
+    }
+
+    public Task SeekAsync(double positionSeconds)
+    {
+        SeekCallCount++;
+        if (ThrowOnCommand) throw new InvalidOperationException("fake: Seek refused");
         return Task.CompletedTask;
     }
 
