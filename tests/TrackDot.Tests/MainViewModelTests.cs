@@ -41,6 +41,7 @@ public sealed class MainViewModelTests
         Assert.Null(vm.SourceAppUserModelId);
         Assert.False(vm.IsPlaying);
         Assert.False(vm.HasMedia);
+        Assert.False(vm.CanSeek);
 
         // With no session, capabilities default to None so every
         // command is disabled. The view-model's canExecute
@@ -249,12 +250,22 @@ public sealed class MainViewModelTests
         Assert.Contains(nameof(MainViewModel.Artist), changes);
         Assert.Contains(nameof(MainViewModel.AlbumTitle), changes);
         Assert.Contains(nameof(MainViewModel.IsPlaying), changes);
+        Assert.Contains(nameof(MainViewModel.PlayPauseIcon), changes);
+        Assert.Contains(nameof(MainViewModel.PlayPauseToolTip), changes);
         Assert.Contains(nameof(MainViewModel.HasMedia), changes);
         Assert.Contains(nameof(MainViewModel.PositionSeconds), changes);
         Assert.Contains(nameof(MainViewModel.DurationSeconds), changes);
         Assert.Contains(nameof(MainViewModel.ElapsedTimeText), changes);
         Assert.Contains(nameof(MainViewModel.DurationTimeText), changes);
         Assert.Contains(nameof(MainViewModel.SourceAppUserModelId), changes);
+        Assert.Contains(nameof(MainViewModel.SourceAppName), changes);
+        Assert.Contains(nameof(MainViewModel.AvailableSessions), changes);
+        Assert.Contains(nameof(MainViewModel.HasMultipleSessions), changes);
+        Assert.Contains(nameof(MainViewModel.Volume), changes);
+        Assert.Contains(nameof(MainViewModel.VolumePercent), changes);
+        Assert.Contains(nameof(MainViewModel.IsMuted), changes);
+        Assert.Contains(nameof(MainViewModel.MuteIconPathData), changes);
+        Assert.Contains(nameof(MainViewModel.MuteToolTip), changes);
     }
 
     [Fact]
@@ -621,6 +632,57 @@ public sealed class MainViewModelTests
             sourceAumid: null));
 
         Assert.Null(vm.SourceAppUserModelId);
+        Assert.Equal(string.Empty, vm.SourceAppName);
+    }
+
+    [Fact]
+    public void SourceAppName_formats_known_aumid_patterns()
+    {
+        var (vm, svc, _, _) = BuildViewModel();
+        svc.Publish(MakeSnapshot(
+            state: MediaPlaybackState.Playing,
+            position: TimeSpan.Zero,
+            endTime: TimeSpan.FromMinutes(1),
+            caps: AllEnabled(),
+            sourceAumid: "com.spotify.client"));
+
+        Assert.Equal("Spotify", vm.SourceAppName);
+
+        svc.Publish(MakeSnapshot(
+            state: MediaPlaybackState.Playing,
+            position: TimeSpan.Zero,
+            endTime: TimeSpan.FromMinutes(1),
+            caps: AllEnabled(),
+            sourceAumid: "chrome.exe"));
+
+        Assert.Equal("Google Chrome", vm.SourceAppName);
+    }
+
+    [Fact]
+    public void PlayPauseIcon_and_ToolTip_toggle_with_playback_state()
+    {
+        var (vm, svc, _, _) = BuildViewModel();
+        svc.Publish(MakeSnapshot(
+            state: MediaPlaybackState.Playing,
+            position: TimeSpan.Zero,
+            endTime: TimeSpan.FromMinutes(1),
+            caps: AllEnabled()));
+
+        Assert.True(vm.IsPlaying);
+        Assert.Equal("\uE769", vm.PlayPauseIcon); // Pause glyph
+        Assert.Contains("H 7", vm.PlayPausePathData); // Pause bars path
+        Assert.Equal("Pause", vm.PlayPauseToolTip);
+
+        svc.Publish(MakeSnapshot(
+            state: MediaPlaybackState.Paused,
+            position: TimeSpan.Zero,
+            endTime: TimeSpan.FromMinutes(1),
+            caps: AllEnabled()));
+
+        Assert.False(vm.IsPlaying);
+        Assert.Equal("\uE768", vm.PlayPauseIcon); // Play glyph
+        Assert.Contains("L 18,10", vm.PlayPausePathData); // Play triangle path
+        Assert.Equal("Play", vm.PlayPauseToolTip);
     }
 
     // -----------------------------------------------------------------------

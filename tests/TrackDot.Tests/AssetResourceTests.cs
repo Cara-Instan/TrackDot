@@ -255,6 +255,17 @@ public sealed class AssetResourceTests
         Assert.Contains("pack://application:,,,/Assets/AppIcon.ico", appXaml);
     }
 
+    [Fact]
+    public void App_xaml_contains_valid_SystemColors_static_keys()
+    {
+        // Guard against referencing non-existent SystemColors properties
+        // (such as SystemColors.ControlHighlightBrushKey) which compile but throw
+        // XamlParseException at runtime when App.xaml resources are loaded.
+        var appXaml = File.ReadAllText(Path.Combine(RepositoryRoot, "App.xaml"));
+
+        Assert.DoesNotContain("SystemColors.ControlHighlightBrushKey", appXaml);
+    }
+
     // -------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------

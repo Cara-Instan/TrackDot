@@ -10,29 +10,7 @@
     <UseWPF>true</UseWPF>
     <IsPackable>false</IsPackable>
     <LangVersion>12</LangVersion>
-    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
-
-  <ItemGroup>
-    <Compile Include="SmokeTests.cs" />
-    <Compile Include="MediaSessionSnapshotTests.cs" />
-    <Compile Include="MediaPropertyMapperTests.cs" />
-    <Compile Include="ThumbnailDecoderTests.cs" />
-    <Compile Include="AsyncRelayCommandTests.cs" />
-    <Compile Include="MediaControllerCommandTests.cs" />
-    <Compile Include="ServiceGenerationTests.cs" />
-    <Compile Include="Fakes\FakeMediaControllerService.cs" />
-    <Compile Include="Fakes\FakeTicker.cs" />
-    <Compile Include="ProgressInterpolationTests.cs" />
-    <Compile Include="MainViewModelTests.cs" />
-    <Compile Include="ViewModelLifecycleTests.cs" />
-    <Compile Include="AssetResourceTests.cs" />
-    <Compile Include="SingleInstanceGuardTests.cs" />
-    <Compile Include="TrayIconServiceTests.cs" />
-    <Compile Include="WindowPlacementTests.cs" />
-    <Compile Include="UnhandledExceptionLoggerTests.cs" />
-    <Compile Include="StartupServiceTests.cs" />
-  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
