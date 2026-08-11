@@ -20,6 +20,9 @@
     <Compile Include="ThumbnailDecoderTests.cs" />
     <Compile Include="AsyncRelayCommandTests.cs" />
     <Compile Include="MediaControllerCommandTests.cs" />
+    <Compile Include="Fakes\FakeMediaControllerService.cs" />
+    <Compile Include="ProgressInterpolationTests.cs" />
+    <Compile Include="MainViewModelTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
