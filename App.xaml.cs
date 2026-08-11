@@ -30,6 +30,7 @@ public partial class App : Application
     private SettingsWindow? _settingsWindow;
     private IStartupService? _startupService;
     private IThemeService? _themeService;
+    private IWindowSettingsService? _windowSettingsService;
     private IWindowPlacementService? _placement;
     private DispatcherUiTicker? _ticker;
     private MediaControllerService? _mediaService;
@@ -53,6 +54,7 @@ public partial class App : Application
         // Step 1b: theme service composition and initialization.
         _themeService = new ThemeService();
         _themeService.ApplyTheme(_themeService.SelectedTheme);
+        _windowSettingsService = new WindowSettingsService();
 
         // Step 2: build media-control service, view-model, popover window.
         _mediaService = new MediaControllerService();
@@ -96,6 +98,7 @@ public partial class App : Application
         try { _settingsViewModel?.Dispose(); } catch { /* swallow */ }
         _settingsViewModel = null;
         _startupService = null;
+        _windowSettingsService = null;
 
         try { _themeService?.Dispose(); } catch { /* swallow */ }
         _themeService = null;
