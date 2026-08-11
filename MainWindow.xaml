@@ -1,12 +1,46 @@
 ﻿<Window x:Class="TrackDot.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:TrackDot"
-        mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
-
-    </Grid>
+        Title="TrackDot" Width="360" SizeToContent="Height"
+        WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
+        Topmost="True" Background="Transparent" AllowsTransparency="True"
+        Deactivated="Window_Deactivated" KeyDown="Window_KeyDown"
+        SourceInitialized="Window_SourceInitialized">
+    <Border Background="{StaticResource PanelBrush}" CornerRadius="12" Padding="12">
+        <Grid Width="336">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="88" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0" MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="88" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Width="88" Height="88" Background="#34373D" CornerRadius="6">
+                    <Image Source="{Binding Artwork}" Stretch="UniformToFill" AutomationProperties.Name="Album artwork" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="12,4,0,0">
+                    <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Artist}" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0" />
+                    <TextBlock Text="{Binding SourceAppUserModelId}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,0" />
+                </StackPanel>
+            </Grid>
+            <Grid Grid.Row="1" Margin="0,10,0,0">
+                <ProgressBar Minimum="0" Maximum="{Binding DurationSeconds}" Value="{Binding PositionSeconds}" Height="4" Foreground="{StaticResource AccentBrush}" />
+            </Grid>
+            <Grid Grid.Row="2" Margin="0,7,0,0">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding ElapsedTimeText}" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Style="{StaticResource TransportButton}" Command="{Binding PreviousCommand}" AutomationProperties.Name="Previous" ToolTip="Previous">◀</Button>
+                    <Button Style="{StaticResource TransportButton}" Command="{Binding TogglePlayPauseCommand}" AutomationProperties.Name="Play or pause" ToolTip="Play / Pause">▶</Button>
+                    <Button Style="{StaticResource TransportButton}" Command="{Binding StopCommand}" AutomationProperties.Name="Stop" ToolTip="Stop">■</Button>
+                    <Button Style="{StaticResource TransportButton}" Command="{Binding NextCommand}" AutomationProperties.Name="Next" ToolTip="Next">▶</Button>
+                </StackPanel>
+                <TextBlock Grid.Column="2" Text="{Binding DurationTimeText}" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
+            </Grid>
+        </Grid>
+    </Border>
 </Window>
