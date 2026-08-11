@@ -635,6 +635,9 @@ public sealed class MainViewModelTests
         BuildViewModel()
     {
         var svc = new FakeMediaControllerService();
+        // FakeTicker moved to Fakes/FakeTicker.cs so it is shared
+        // with ViewModelLifecycleTests. The private nested class
+        // that used to live here was deleted — see Task 11.
         var ticker = new FakeTicker();
         var clock = new FakeClock(TimeSpan.FromSeconds(100));
         var vm = new MainViewModel(svc, ticker, () => clock.Now);
@@ -687,37 +690,5 @@ public sealed class MainViewModelTests
         public FakeClock(TimeSpan initial) { _now = initial; }
         public DateTimeOffset Now => DateTimeOffset.UnixEpoch + _now;
         public void Advance(TimeSpan delta) { _now += delta; }
-    }
-
-    /// <summary>
-    /// Captures the tick callback instead of using a real
-    /// <c>DispatcherTimer</c>. Tests call <see cref="Fire"/> to
-    /// simulate a 250 ms elapsed tick.
-    /// </summary>
-    private sealed class FakeTicker : IUiTicker
-    {
-        public Action? Callback { get; private set; }
-        public int StartCallCount { get; private set; }
-        public int StopCallCount { get; private set; }
-        public bool IsRunning => Callback is not null;
-
-        public void Start(Action onTick)
-        {
-            Callback = onTick;
-            StartCallCount++;
-        }
-
-        public void Stop()
-        {
-            Callback = null;
-            StopCallCount++;
-        }
-
-        public void Fire()
-        {
-            // Take a snapshot in case the callback resets the ticker.
-            var cb = Callback;
-            cb?.Invoke();
-        }
     }
 }
