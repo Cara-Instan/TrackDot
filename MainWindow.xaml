@@ -1,46 +1,242 @@
-﻿<Window x:Class="TrackDot.MainWindow"
+<Window x:Class="TrackDot.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="TrackDot" Width="360" SizeToContent="Height"
         WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
-        Topmost="True" Background="Transparent" AllowsTransparency="True"
+        Topmost="True" Background="Transparent"
         Deactivated="Window_Deactivated" KeyDown="Window_KeyDown"
         Closing="Window_Closing"
-        SourceInitialized="Window_SourceInitialized">
-    <Border Background="{StaticResource PanelBrush}" CornerRadius="12" Padding="12">
-        <Grid Width="336">
+        SourceInitialized="Window_SourceInitialized"
+        Icon="pack://application:,,,/Assets/AppIcon.ico">
+    <WindowChrome.WindowChrome>
+        <WindowChrome GlassFrameThickness="0"
+                      ResizeBorderThickness="0"
+                      CaptionHeight="0"
+                      CornerRadius="0"
+                      UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+    <Border Background="{DynamicResource PanelBrush}" 
+            BorderBrush="{DynamicResource PanelBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="14" 
+            Padding="14">
+        <Grid Width="330">
             <Grid.RowDefinitions>
-                <RowDefinition Height="88" />
+                <RowDefinition Height="84" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <Grid Grid.Row="0" MouseLeftButtonDown="Header_MouseLeftButtonDown">
+            
+            <!-- Header: Artwork + Title / Artist / Source App Badge -->
+            <Grid Grid.Row="0" MouseLeftButtonDown="Header_MouseLeftButtonDown" Background="Transparent">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="88" />
+                    <ColumnDefinition Width="84" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Border Width="88" Height="88" Background="#34373D" CornerRadius="6">
-                    <Image Source="{Binding Artwork}" Stretch="UniformToFill" AutomationProperties.Name="Album artwork" />
+                <Border Width="84" Height="84" Background="{DynamicResource ArtworkBackgroundBrush}" CornerRadius="10" ClipToBounds="True">
+                    <Grid>
+                        <!-- Vector Fallback Music Eighth-Note Icon if artwork is null -->
+                        <Path Data="M 12,3 V 13.5 A 3.5,3.5 0 1,1 8.5,10 A 3.5,3.5 0 0,1 12,13.5 V 6 H 18 V 3 H 12 Z" 
+                               Fill="{DynamicResource MutedBrush}" 
+                               Width="28" Height="28" Stretch="Uniform" 
+                               HorizontalAlignment="Center" VerticalAlignment="Center" 
+                               Opacity="0.4" />
+                        <Image Stretch="UniformToFill" AutomationProperties.Name="Album artwork">
+                            <Image.Source>
+                                <Binding Path="Artwork">
+                                    <Binding.FallbackValue>
+                                        <BitmapImage UriSource="pack://application:,,,/Assets/PlaceholderArt.png" />
+                                    </Binding.FallbackValue>
+                                </Binding>
+                            </Image.Source>
+                        </Image>
+                    </Grid>
                 </Border>
-                <StackPanel Grid.Column="1" Margin="12,4,0,0">
-                    <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding Artist}" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0" />
-                    <TextBlock Text="{Binding SourceAppUserModelId}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,0" />
+                <StackPanel Grid.Column="1" Margin="14,2,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="Bold" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Title}" />
+                    <TextBlock Text="{Binding Artist}" Foreground="{DynamicResource MutedBrush}" FontSize="13" Margin="0,3,0,0" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Artist}" />
+                    
+                    <!-- App Badge (Collapses when SourceAppName is empty or null) -->
+                    <Border HorizontalAlignment="Left" 
+                            Margin="0,8,0,0" 
+                            Padding="6,2" 
+                            CornerRadius="4" 
+                            Background="{DynamicResource BadgeBackgroundBrush}"
+                            BorderBrush="{DynamicResource BadgeBorderBrush}"
+                            BorderThickness="1">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SourceAppName}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding SourceAppName}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Text="{Binding SourceAppName}" 
+                                   Foreground="{DynamicResource AccentBrush}" 
+                                   FontSize="10" 
+                                   FontWeight="SemiBold" />
+                    </Border>
                 </StackPanel>
             </Grid>
-            <Grid Grid.Row="1" Margin="0,10,0,0">
-                <ProgressBar Minimum="0" Maximum="{Binding DurationSeconds, Mode=OneWay}" Value="{Binding PositionSeconds, Mode=OneWay}" Height="4" Foreground="{StaticResource AccentBrush}" />
+
+            <!-- Seek Slider (replaces read-only ProgressBar) -->
+            <Grid Grid.Row="1" Margin="0,12,0,0">
+                <Slider x:Name="SeekSlider"
+                        Minimum="0"
+                        Maximum="{Binding DurationSeconds, Mode=OneWay}"
+                        Value="{Binding PositionSeconds, Mode=OneWay}"
+                        Height="4"
+                        IsMoveToPointEnabled="True"
+                        IsEnabled="{Binding CanSeek}"
+                        PreviewMouseLeftButtonUp="SeekSlider_MouseLeftButtonUp"
+                        Style="{StaticResource SeekSliderStyle}"
+                        AutomationProperties.Name="Track progress" />
             </Grid>
-            <Grid Grid.Row="2" Margin="0,7,0,0">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <TextBlock Text="{Binding ElapsedTimeText}" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
-                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Style="{StaticResource TransportButton}" Command="{Binding PreviousCommand}" AutomationProperties.Name="Previous" ToolTip="Previous">◀</Button>
-                    <Button Style="{StaticResource TransportButton}" Command="{Binding TogglePlayPauseCommand}" AutomationProperties.Name="Play or pause" ToolTip="Play / Pause">▶</Button>
-                    <Button Style="{StaticResource TransportButton}" Command="{Binding StopCommand}" AutomationProperties.Name="Stop" ToolTip="Stop">■</Button>
-                    <Button Style="{StaticResource TransportButton}" Command="{Binding NextCommand}" AutomationProperties.Name="Next" ToolTip="Next">▶</Button>
+
+            <!-- Transport Controls Row -->
+            <Grid Grid.Row="2" Margin="0,10,0,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="45" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="45" />
+                </Grid.ColumnDefinitions>
+                
+                <!-- Elapsed Time -->
+                <TextBlock Text="{Binding ElapsedTimeText}" 
+                           Foreground="{DynamicResource MutedBrush}" 
+                           FontSize="11"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Center" />
+                
+                <!-- 3-Button Center Controls (Vector Geometries for 100% Crisp Font-Independent Icons) -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <!-- Previous Track Button (Bar + Left Triangle) -->
+                    <Button Style="{StaticResource SecondaryTransportButton}" 
+                            Command="{Binding PreviousCommand}" 
+                            AutomationProperties.Name="Previous" 
+                            ToolTip="Previous Track">
+                        <Path Data="M 2,2 H 5 V 14 H 2 Z M 14,2 L 5,8 L 14,14 Z" 
+                               Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" 
+                               Width="14" Height="14" Stretch="Uniform" />
+                    </Button>
+                    
+                    <!-- Play / Pause Accent Button (Dynamic Vector Geometry) -->
+                    <Button Style="{StaticResource PrimaryTransportButton}" 
+                            Command="{Binding TogglePlayPauseCommand}" 
+                            AutomationProperties.Name="Play or pause" 
+                            ToolTip="{Binding PlayPauseToolTip}">
+                        <Path Data="{Binding PlayPausePathData}" 
+                               Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" 
+                               Width="15" Height="15" Stretch="Uniform" />
+                    </Button>
+                    
+                    <!-- Next Track Button (Right Triangle + Bar) -->
+                    <Button Style="{StaticResource SecondaryTransportButton}" 
+                            Command="{Binding NextCommand}" 
+                            AutomationProperties.Name="Next" 
+                            ToolTip="Next Track">
+                        <Path Data="M 2,2 L 11,8 L 2,14 Z M 11,2 H 14 V 14 H 11 Z" 
+                               Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" 
+                               Width="14" Height="14" Stretch="Uniform" />
+                    </Button>
                 </StackPanel>
-                <TextBlock Grid.Column="2" Text="{Binding DurationTimeText}" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                
+                <!-- Duration Time -->
+                <TextBlock Grid.Column="2" 
+                           Text="{Binding DurationTimeText}" 
+                           Foreground="{DynamicResource MutedBrush}" 
+                           FontSize="11"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center" />
+            </Grid>
+
+            <!-- Session Picker Row (only shown when 2+ SMTC sources are active) -->
+            <Border Grid.Row="3"
+                    Margin="0,10,0,0"
+                    Visibility="{Binding HasMultipleSessions, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Text="SWITCH SOURCE"
+                               Foreground="{DynamicResource MutedBrush}"
+                               FontSize="9"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,6"
+                               Opacity="0.6" />
+                    <ItemsControl ItemsSource="{Binding AvailableSessions}"
+                                  AutomationProperties.Name="Session picker">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource SessionPillButton}"
+                                        Content="{Binding DisplayName}"
+                                        Command="{Binding DataContext.SelectSessionCommand,
+                                                  RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                        CommandParameter="{Binding SourceAppUserModelId}"
+                                        AutomationProperties.Name="{Binding DisplayName}"
+                                        ToolTip="{Binding DisplayName}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- Volume / Mute Row (only shown when a media session is active) -->
+            <Grid Grid.Row="4"
+                  Margin="0,10,0,2"
+                  Visibility="{Binding HasMedia, Converter={StaticResource BoolToVis}}">
+                <Grid.ColumnDefinitions>
+                    <!-- Mute toggle -->
+                    <ColumnDefinition Width="32" />
+                    <!-- Volume slider -->
+                    <ColumnDefinition Width="*" />
+                    <!-- Volume % label -->
+                    <ColumnDefinition Width="36" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Mute Toggle Button -->
+                <Button Grid.Column="0"
+                        Style="{StaticResource MuteButton}"
+                        Command="{Binding ToggleMuteCommand}"
+                        ToolTip="{Binding MuteToolTip}"
+                        AutomationProperties.Name="Toggle mute">
+                    <Path Data="{Binding MuteIconPathData}"
+                          Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"
+                          Width="16" Height="16" Stretch="Uniform" />
+                </Button>
+
+                <!-- Volume Slider -->
+                <Slider x:Name="VolumeSlider"
+                        Grid.Column="1"
+                        Minimum="0"
+                        Maximum="100"
+                        Value="{Binding VolumePercent, Mode=OneWay}"
+                        Height="3"
+                        Margin="4,0"
+                        IsMoveToPointEnabled="True"
+                        IsEnabled="{Binding HasMedia}"
+                        PreviewMouseLeftButtonUp="VolumeSlider_MouseLeftButtonUp"
+                        Style="{StaticResource VolumeSliderStyle}"
+                        AutomationProperties.Name="Volume" />
+
+                <!-- Volume % Label -->
+                <TextBlock Grid.Column="2"
+                           Text="{Binding VolumePercent, StringFormat='{}{0}%'}"
+                           Foreground="{DynamicResource MutedBrush}"
+                           FontSize="10"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center" />
             </Grid>
         </Grid>
     </Border>

@@ -132,3 +132,58 @@ public sealed class AsyncRelayCommand : ICommand
     public void RaiseCanExecuteChanged()
         => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 }
+
+/// <summary>
+/// Typed variant of <see cref="AsyncRelayCommand"/> that unwraps the
+/// <c>CommandParameter</c> to a strongly-typed <typeparamref name="T"/>
+/// before invoking the execute delegate. Used for the seek slider where
+/// the parameter is a <c>double</c> (seconds).
+/// </summary>
+public sealed class AsyncRelayCommand<T> : ICommand
+{
+    private readonly Func<T, Task> _execute;
+    private readonly Func<T, bool>? _canExecute;
+    private int _running;
+
+    /// <summary>Test-only latch accessor.</summary>
+    internal int RunningForTest => Volatile.Read(ref _running);
+
+    public AsyncRelayCommand(Func<T, Task> execute, Func<T, bool>? canExecute = null)
+    {
+        ArgumentNullException.ThrowIfNull(execute);
+        _execute = execute;
+        _canExecute = canExecute;
+    }
+
+    /// <inheritdoc/>
+    public bool CanExecute(object? parameter)
+    {
+        if (Volatile.Read(ref _running) != 0) return false;
+        if (_canExecute is null) return true;
+        return parameter is T typed && _canExecute(typed);
+    }
+
+    /// <inheritdoc/>
+    public async void Execute(object? parameter)
+    {
+        if (parameter is not T typed) return;
+        if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return;
+        try
+        {
+            await _execute(typed).ConfigureAwait(true);
+        }
+        catch { /* swallow — belt-and-suspenders */ }
+        finally
+        {
+            Volatile.Write(ref _running, 0);
+            RaiseCanExecuteChanged();
+        }
+    }
+
+    /// <inheritdoc/>
+    public event EventHandler? CanExecuteChanged;
+
+    /// <summary>Raises <see cref="CanExecuteChanged"/>.</summary>
+    public void RaiseCanExecuteChanged()
+        => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+}

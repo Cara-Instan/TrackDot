@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
@@ -14,11 +14,19 @@ namespace TrackDot;
 public partial class MainWindow : Window, IPopoverHost
 {
     /// <summary>
-    /// Set by the composition root when the application is in the
-    /// process of shutting down. While <c>true</c>, the
-    /// <c>Closing</c> handler lets the window close normally.
+    /// Signals that the application is shutting down. While <c>true</c>,
+    /// the <c>Closing</c> handler lets the window close normally.
+    /// Call <see cref="BeginShutdown"/> from the composition root during
+    /// teardown instead of setting a static property.
     /// </summary>
-    public static bool IsShuttingDown { get; set; }
+    private bool _isShuttingDown;
+
+    /// <summary>
+    /// Called by the composition root (<c>App.OnExit</c>) before
+    /// closing the window so that the <c>Closing</c> handler does not
+    /// cancel the close.
+    /// </summary>
+    public void BeginShutdown() => _isShuttingDown = true;
 
     private MainViewModel? _viewModel;
     private IWindowPlacementService? _placement;
@@ -134,6 +142,23 @@ public partial class MainWindow : Window, IPopoverHost
             DragMove();
     }
 
+    private void SeekSlider_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Slider slider) return;
+        if (_viewModel?.SeekCommand is not { } cmd) return;
+        if (cmd.CanExecute(slider.Value))
+            cmd.Execute(slider.Value);
+    }
+
+    private void VolumeSlider_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Slider slider) return;
+        if (_viewModel?.SetVolumeCommand is not { } cmd) return;
+        if (cmd.CanExecute(slider.Value))
+            cmd.Execute(slider.Value);
+    }
+
+
     private void Window_Deactivated(object? sender, EventArgs e)
     {
         if (!IsActive) HidePopover();
@@ -154,7 +179,7 @@ public partial class MainWindow : Window, IPopoverHost
         // happen normally. Otherwise the user pressing X (or
         // Alt+F4) must not terminate the tray process — just hide
         // the popover and remain alive in the notification area.
-        if (!IsShuttingDown)
+        if (!_isShuttingDown)
         {
             e.Cancel = true;
             HidePopover();
@@ -163,6 +188,20 @@ public partial class MainWindow : Window, IPopoverHost
 
     private void Window_SourceInitialized(object? sender, EventArgs e)
     {
-        // Rounded WPF chrome is intentionally used for Windows 10 compatibility.
+        // Extend the DWM glass frame to fill the entire window so the
+        // background renders transparent via hardware (DWM composition)
+        // rather than software rendering (AllowsTransparency). This is
+        // the recommended approach for frameless WPF windows on Win10/11.
+        var helper = new System.Windows.Interop.WindowInteropHelper(this);
+        if (helper.Handle == IntPtr.Zero) return;
+        try
+        {
+            var margins = new NativeMethods.MARGINS { cxLeftWidth = -1 };
+            NativeMethods.DwmExtendFrameIntoClientArea(helper.Handle, ref margins);
+        }
+        catch
+        {
+            // DWM unavailable (e.g. running in a VM without Aero); fall back gracefully.
+        }
     }
 }

@@ -54,7 +54,8 @@ public static class MediaPropertyMapper
         bool CanPause,
         bool CanStop,
         bool CanGoPrevious,
-        bool CanGoNext);
+        bool CanGoNext,
+        bool CanSeek = false);
 
     /// <summary>
     /// Timeline projection. All three TimeSpans plus a LastUpdated
@@ -108,7 +109,8 @@ public static class MediaPropertyMapper
             CanPause:      controls.CanPause,
             CanStop:       controls.CanStop,
             CanGoPrevious: controls.CanGoPrevious,
-            CanGoNext:     controls.CanGoNext);
+            CanGoNext:     controls.CanGoNext,
+            CanSeek:       controls.CanSeek);
     }
 
     /// <summary>

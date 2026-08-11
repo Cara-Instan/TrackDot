@@ -10,7 +10,8 @@ public sealed record TransportCapabilities(
     bool CanPause,
     bool CanStop,
     bool CanGoPrevious,
-    bool CanGoNext)
+    bool CanGoNext,
+    bool CanSeek = false)
 {
     /// <summary>
     /// All controls disabled. Returned for "no session" so the UI
@@ -21,5 +22,6 @@ public sealed record TransportCapabilities(
         CanPause: false,
         CanStop: false,
         CanGoPrevious: false,
-        CanGoNext: false);
+        CanGoNext: false,
+        CanSeek: false);
 }
