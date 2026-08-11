@@ -82,8 +82,56 @@ public sealed class WindowSettingsService : IWindowSettingsService
         _enableGlobalHotkeys = initialGlobalHotkeys ?? LoadEnableGlobalHotkeys();
     }
 
+    private static string PortableSettingsPath => System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");
+
+    private sealed class PortableSettingsData
+    {
+        public bool PinToTop { get; set; }
+        public int OpacityPercent { get; set; } = 100;
+        public bool EnableGlobalHotkeys { get; set; } = true;
+    }
+
+    private static PortableSettingsData LoadPortableSettings()
+    {
+        try
+        {
+            var path = PortableSettingsPath;
+            if (System.IO.File.Exists(path))
+            {
+                var json = System.IO.File.ReadAllText(path);
+                var data = System.Text.Json.JsonSerializer.Deserialize<PortableSettingsData>(json);
+                if (data != null) return data;
+            }
+        }
+        catch
+        {
+            // Non-fatal fallback
+        }
+        return new PortableSettingsData();
+    }
+
+    private static void SavePortableSettings(Action<PortableSettingsData> updateAction)
+    {
+        try
+        {
+            var data = LoadPortableSettings();
+            updateAction(data);
+            var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            System.IO.File.WriteAllText(PortableSettingsPath, json);
+        }
+        catch
+        {
+            // Non-fatal if write fails
+        }
+    }
+
     private static bool LoadPinToTop()
     {
+        if (PortableMode.IsPortable)
+        {
+            return LoadPortableSettings().PinToTop;
+        }
+
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(TrackDotKeyPath);
@@ -99,6 +147,12 @@ public sealed class WindowSettingsService : IWindowSettingsService
 
     private static void SavePinToTop(bool value)
     {
+        if (PortableMode.IsPortable)
+        {
+            SavePortableSettings(d => d.PinToTop = value);
+            return;
+        }
+
         try
         {
             using var key = Registry.CurrentUser.CreateSubKey(TrackDotKeyPath);
@@ -112,6 +166,11 @@ public sealed class WindowSettingsService : IWindowSettingsService
 
     private static int LoadOpacityPercent()
     {
+        if (PortableMode.IsPortable)
+        {
+            return Math.Clamp(LoadPortableSettings().OpacityPercent, 20, 100);
+        }
+
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(TrackDotKeyPath);
@@ -127,6 +186,12 @@ public sealed class WindowSettingsService : IWindowSettingsService
 
     private static void SaveOpacityPercent(int value)
     {
+        if (PortableMode.IsPortable)
+        {
+            SavePortableSettings(d => d.OpacityPercent = value);
+            return;
+        }
+
         try
         {
             using var key = Registry.CurrentUser.CreateSubKey(TrackDotKeyPath);
@@ -140,6 +205,11 @@ public sealed class WindowSettingsService : IWindowSettingsService
 
     private static bool LoadEnableGlobalHotkeys()
     {
+        if (PortableMode.IsPortable)
+        {
+            return LoadPortableSettings().EnableGlobalHotkeys;
+        }
+
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(TrackDotKeyPath);
@@ -155,6 +225,12 @@ public sealed class WindowSettingsService : IWindowSettingsService
 
     private static void SaveEnableGlobalHotkeys(bool value)
     {
+        if (PortableMode.IsPortable)
+        {
+            SavePortableSettings(d => d.EnableGlobalHotkeys = value);
+            return;
+        }
+
         try
         {
             using var key = Registry.CurrentUser.CreateSubKey(TrackDotKeyPath);

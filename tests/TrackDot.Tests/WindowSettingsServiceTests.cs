@@ -67,4 +67,40 @@ public class WindowSettingsServiceTests
         Assert.False(sut.EnableGlobalHotkeys);
         Assert.True(fired);
     }
+
+    [Fact]
+    public void PortableMode_SaveAndLoadSettings_PersistsInPortableMode()
+    {
+        try
+        {
+            PortableMode.IsPortable = true;
+            var settingsFile = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");
+            if (System.IO.File.Exists(settingsFile))
+            {
+                System.IO.File.Delete(settingsFile);
+            }
+
+            var sut = new WindowSettingsService(initialPinned: false, initialOpacity: 100, initialGlobalHotkeys: true);
+            sut.IsPinned = true;
+            sut.OpacityPercent = 80;
+            sut.EnableGlobalHotkeys = false;
+
+            Assert.True(System.IO.File.Exists(settingsFile));
+
+            // Create new instance without initial values to test loading from JSON file
+            var sutLoaded = new WindowSettingsService();
+            Assert.True(sutLoaded.IsPinned);
+            Assert.Equal(80, sutLoaded.OpacityPercent);
+            Assert.False(sutLoaded.EnableGlobalHotkeys);
+
+            if (System.IO.File.Exists(settingsFile))
+            {
+                System.IO.File.Delete(settingsFile);
+            }
+        }
+        finally
+        {
+            PortableMode.IsPortable = false;
+        }
+    }
 }

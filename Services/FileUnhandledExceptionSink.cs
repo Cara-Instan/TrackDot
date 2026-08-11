@@ -105,6 +105,12 @@ public sealed class FileUnhandledExceptionSink : IUnhandledExceptionSink, IDispo
 
     private static string DefaultLogPath()
     {
+        if (PortableMode.IsPortable)
+        {
+            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            return System.IO.Path.Combine(baseDir, "logs", "crash.log");
+        }
+
         var localAppData = Environment.GetFolderPath(
             Environment.SpecialFolder.LocalApplicationData,
             Environment.SpecialFolderOption.Create);
