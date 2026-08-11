@@ -1,16 +1,16 @@
 # TrackDot Implementation — Session Handoff
 
-**Date:** 2026-08-09 (Tasks 5a + 5b + 5c + 6 + 7 + 8 + 9 completed across sessions; current session shipped Task 9)
+**Date:** 2026-08-11 (Tasks 1–10 completed across sessions; current session shipped Task 10)
 **Session:** Resumed from plan `.hermes/plans/2026-08-09_000000-track-dot-windows-smtc-popover.md`
 **Goal:** Implement the 14-task plan to turn the empty WPF template into a Windows SMTC tray popover.
 
 Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configured in this repo).
 
-**Last verification:** `dotnet test -c Debug` and `dotnet test -c Release` → **169 / 169 passing** (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model + 6 single-instance + 8 tray-icon + 10 placement + 13 exception-logger). Both Debug and Release build with 0 warnings, 0 errors. Stress: 5× Debug full-suite re-runs, zero flakes. Run on 2026-08-09 by the Task 9 shipping session; the next session should treat these numbers as authoritative only after re-running `dotnet test` themselves — counts drift if a test is added and the suite is not re-run.
+**Last verification:** `dotnet test -c Debug` and `dotnet test -c Release` → **193 / 193 passing** (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model + 6 single-instance + 8 tray-icon + 10 placement + 13 exception-logger + 24 startup). Both Debug and Release build with 0 warnings, 0 errors. Stress: full Debug + Release cycle run in the Task 10 shipping session; the next session should treat these numbers as authoritative only after re-running `dotnet test` themselves — counts drift if a test is added and the suite is not re-run.
 
 ---
 
-## Status: Tasks 1, 2, 3, 4, 5, 6, 7, 8, 9 done; Tasks 10-14 pending
+## Status: Tasks 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 done; Tasks 11-14 pending
 
 | # | Task | Status | Commit |
 |---|------|--------|--------|
@@ -25,7 +25,7 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 | 7 | Construct the floating popover UI | ✅ done | `db46fbb` |
 | 8 | Add tray icon lifecycle and toggle behavior | ✅ done | `2d5c165` |
 | 9 | Compose startup, initialization, and error handling | ✅ done | `d0e4a7c` |
-| 10 | Implement launch-at-sign-in settings | 🔴 not started | — |
+| 10 | Implement launch-at-sign-in settings | ✅ done | `2e9a881` |
 | 11 | Add automated lifecycle tests and resource checks | 🔴 not started | — |
 | 12 | Windows integration validation (docs only - manual) | 🔴 not started | — |
 | 13 | Document build, usage, limitations, and privacy | 🔴 not started | — |
@@ -297,15 +297,73 @@ Plan §Task 8 is fully implemented. Behaviour shipped:
 
 ---
 
-## Next: Task 10 — Implement launch-at-sign-in settings
+## Next: Task 11 — Add automated lifecycle tests and resource checks
 
-Task 10 owns:
+Task 11 owns:
 
-- `Services/IStartupService.cs`, `Services/StartupService.cs` — abstract registry access behind a tiny key/value adapter so tests never mutate the real registry.
-- `ViewModels/SettingsViewModel.cs` and `SettingsWindow.xaml` + `.cs` — the actual settings UI.
-- `tests/TrackDot.Tests/StartupServiceTests.cs` — test disabled/enabled detection, quoted executable paths containing spaces, removal, and idempotent enable/disable.
+- `tests/TrackDot.Tests/ServiceGenerationTests.cs` — stale-metadata completion after session switch, repeated initialize/dispose, event unsubscription, no updates after disposal. Requires extracting the coordinator if necessary.
+- `tests/TrackDot.Tests/ViewModelLifecycleTests.cs` — hiding pauses UI interpolation; showing resumes from latest authoritative baseline.
+- `tests/TrackDot.Tests/Fakes/FakeMediaControllerService.cs` — extend to cover the new lifecycle scenarios.
+- A build-time check that `Assets/AppIcon.ico` and `Assets/PlaceholderArt.png` exist with correct WPF resource actions (add the file-existence check + `Compile/None Remove` rules to the test project or a build target).
 
-The Tray menu wiring already exists (`OpenSettingsMenuItem` in `App.xaml`, click handler in `App.OnExitClicked` family). Task 10 only needs to flip the debug-log click handler to actually open the settings window. The tray tooltip update path is already wired (Task 9's `ITrayIconHandle.SetToolTipText`) — Task 10 can reuse it if the launch-at-sign-in toggle needs to surface a state change (it probably doesn't).
+The composition-root exception log path is now used during normal startup (`App.OnStartup` step 0 → last-dispatched). If Task 11 lifecycle tests fail, the failure logs will be in `%LocalAppData%\TrackDot\crash.log` — check there first before chasing reproduce steps.
+
+The SettingsWindow XAML surface verifier (`scripts/verify-xaml-surface.py`-style) at `.hermes/verify-settings-xaml-surface.py` already exists; Task 11 may want to fold both popovers under one script with the XAML filename as a CLI arg, or keep them separate.
+
+---
+
+## Task 10 — Implement launch-at-sign-in settings (shipped in commit `2e9a881`)
+
+Plan §Task 10 is fully implemented. Behaviour shipped:
+
+1. **`IStartupService`** — minimal contract: `IsEnabled`, `Enable()`, `Disable()`. Production implementation is `StartupService`; both `Enable` and `Disable` are idempotent (no-op when already in the target state).
+2. **Registry adapter seam** — `IRegistryKey` (ReadValue / WriteValue / DeleteValue / IDisposable) + `IRegistryKeyFactory.OpenRunKey()`. The production `RegistryKeyFactory` opens `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` via `Microsoft.Win32.Registry.CurrentUser.CreateSubKey(...)` with `RegistryKeyPermissionCheck.ReadWriteSubTree`. Tests inject `FakeRegistryKeyFactory` — an in-memory dictionary adapter — so no test ever mutates the real registry.
+3. **`StartupService`** resolves the executable path at construction time via `Environment.ProcessPath` (the .NET 6+ replacement for `Process.MainModule.FileName`). The path is stored **quoted** (`"..."`) so a path-with-spaces parses correctly under the Run-key parser; `IsEnabled` compares against the unquoted stored value with **case-insensitive** + **trailing-separator-tolerant** equality so both quoted and unquoted stored values register as ours.
+4. **Per-user only, no elevation** — `HKCU` never needs admin. The `ValueName` and `RunKeyPath` constants live on `RegistryKeyFactory` so the service is decoupled from the path.
+5. **`SettingsViewModel`** — `INotifyPropertyChanged` + `IDisposable`. `LaunchAtSignIn` is a two-way property; the setter calls `Enable()`/`Disable()` immediately, and on exception rolls the field back AND surfaces a `StatusMessage` for the UI. Save-immediately was chosen over an explicit Apply button (single-checkbox dialog — the dirty-tracking path would add complexity without benefit).
+6. **`SettingsWindow.xaml`** — compact dialog: title, one CheckBox (`LaunchAtSignIn`), explanatory text with the registry path/value-name baked in for regedit verification, a status row that collapses to `Collapsed` when `StatusMessage` is empty (via `DataTrigger`, no new converter), and a Close button with `IsCancel="True"` for automatic Esc wiring. Closing the window hides it (preserves the user's position across opens) unless `App.IsShuttingDown`.
+7. **Composition root** — `App.OnStartup` now constructs `_startupService = new StartupService(new RegistryKeyFactory())`, the `_settingsViewModel`, and the `_settingsWindow` after the tray icon (Step 4b). `App.OnExit` tears them down in reverse order, setting `TrackDot.SettingsWindow.IsShuttingDown = true` so the `Closing` handler lets the window close normally.
+8. **`OnOpenSettingsClicked`** now calls `_settingsWindow.ShowSettings()` — idempotent; a second tray click while already open calls `Activate()` instead of duplicating the window.
+
+**Files created / modified:**
+- `Services/IStartupService.cs` — interface.
+- `Services/IRegistryKey.cs` — key/value adapter + factory interfaces.
+- `Services/RegistryKeyAdapter.cs` — `RegistryKeyFactory` (production) + `RegistryKeyAdapter` (production wrapper around a `Microsoft.Win32.RegistryKey` handle).
+- `Services/StartupService.cs` — production service. Two internal ctors: one that takes a specific executable path (so tests don't depend on the test runner's host path), one with a marker `bool unresolvedPath` parameter that leaves both path fields null (the `Environment.ProcessPath`-returned-null branch).
+- `ViewModels/SettingsViewModel.cs` — VM with roll-back-on-throw + `StatusMessage`.
+- `SettingsWindow.xaml` + `.cs` — compact dialog; `IsShuttingDown` flag mirrors `MainWindow`.
+- `App.xaml.cs` — composition root: Step 4b constructs `_startupService`, `_settingsViewModel`, `_settingsWindow`; `OnExit` adds `SettingsWindow.IsShuttingDown = true` + dispose; `OnOpenSettingsClicked` now opens the window.
+- `tests/TrackDot.Tests/StartupServiceTests.cs` — **new**, 24 tests: detection (missing / matches / foreign / case-insensitive / trailing-separator / unquoted / no-spaces), write (quoted / idempotent / overwrites foreign / round-trips with Disable), removal (idempotent / preserves foreign), lifecycle (read-count / read+write count), unresolved-path branch (`Enable` throws / `IsEnabled` false), fake-adapter contract sanity (null-name throws, null-value deletes, missing-value delete no-op).
+- `tests/TrackDot.Tests/TrackDot.Tests.csproj` — added `<Compile Include="StartupServiceTests.cs" />`.
+- `.hermes/verify-settings-xaml-surface.py` — **new**, ad-hoc structural check for the settings window. Reports `PASS static=4 bindings=4 commands=0 handlers=2`. Differs from the original `winrt-wpf-desktop` skill's script: also scans `<Window.Resources>` blocks for local styles (the original only scans `App.xaml`).
+
+**Build & test:** Debug + Release both build with 0 warnings, 0 errors. `dotnet test` Debug: **193 / 193 passing** (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model + 6 single-instance + 8 tray-icon + 10 placement + 13 exception-logger + 24 startup). Same on Release. XAML surface verifier reports `PASS static=4 bindings=4 commands=0 handlers=2` — every `{StaticResource}`, `{Binding}`, `Command`, and code-behind handler in the settings XAML resolves.
+
+**Gotchas the next session needs to know:**
+
+1. **`StartupService` keeps its production class `sealed`.** Test seams live on **internal ctor overloads** — one that takes a specific path (`StartupService(IRegistryKeyFactory, string executablePath)`), and one with a marker `bool unresolvedPath` parameter that leaves both path fields null. Do NOT unseal the production class to subclass for tests — the overload pattern is sufficient and preserves the type's sealedness.
+
+2. **`Enable` calls `IsEnabled` first (for idempotency), so each `Enable` opens the registry key TWICE** (once for the read, once for the write). This is correct — `IsEnabled` is the source of truth, and re-reading on every call means a foreign-write between the user's prior `Disable` and current `Enable` is picked up. The `StartupServiceTests` `Enable_opens_the_registry_key_one_read_and_one_write` test asserts this. Do not "optimize" by caching the read result.
+
+3. **Idempotent-test assertion trap.** Asserting "no I/O happened" by counting `OpenRunKey` calls is wrong — `Enable` and `Disable` always call `IsEnabled` (which opens the key for the read), even when the write/delete is short-circuited. The correct assertion is on the **write surface** (the value dictionary, the file contents), NOT the open count. The `StartupServiceTests` `Enable_is_idempotent_when_already_enabled` and `Disable_is_idempotent_when_already_disabled` tests assert on `Values` (the write surface) AND on the open-count delta (`OpenCountBefore + 1`) — measuring exactly the read-side I/O the idempotent code path performs.
+
+4. **`Microsoft.Win32.RegistryKey.SetValue(name, null, kind)` triggers CS8604** even though passing `null` to `SetValue` legitimately deletes the value (documented Win32 behaviour). The production `RegistryKeyAdapter.WriteValue` suppresses with `_key.SetValue(name, (object?)value!, RegistryValueKind.String);` — the cast matches the parameter's declared `object` type and the `!` is the "I know it's not null when non-null" assertion. Do not change this to a non-null sentinel — the underlying API genuinely accepts null and the registry-adapter seam's contract (`WriteValue(name, null)` = delete) needs to round-trip through it.
+
+5. **`HKCU\...\Run` paths with spaces MUST be quoted.** The Windows Run-key parser splits on whitespace inside an unquoted string. Every per-user install path on Windows contains a space (`%LocalAppData%\Programs\App\`). The stored value must be `"C:\Path\To\App.exe"` (with surrounding quotes). The detection path (`IsEnabled`) accepts BOTH quoted and unquoted stored values — the Windows parser accepts both forms and third-party tools frequently write the unquoted form. `OrdinalIgnoreCase` + trailing-separator trim handles both.
+
+6. **Save-immediately view-model with field-rollback-on-throw.** A `LaunchAtSignIn` setter that persists optimistically must roll the backing field back to its prior value on exception, otherwise a stale checkbox claiming "on" while the registry is off is worse than a click that visibly failed. The `SettingsViewModel.LaunchAtSignIn` setter does this AND surfaces the exception's message via `StatusMessage` so the user sees both signals (checkbox reverts, footer goes red). The next session should NOT switch to an Apply-button model without adding dirty-tracking — the current model is correct for a single checkbox.
+
+7. **SettingsWindow is single-instance, owned by `App`.** `App._settingsWindow` is constructed once and `ShowSettings()` is idempotent (second click → `Activate()`). The window's `Closing` handler cancels + hides unless `App.OnExit` set `SettingsWindow.IsShuttingDown = true`. The fully-qualified type name (`TrackDot.SettingsWindow.IsShuttingDown`) follows the same Application-property-shadow rule as `MainWindow` (see Task 8 gotcha #1).
+
+8. **`DataTrigger` beats a converter** for "visible-when-non-empty / collapsed-when-empty" patterns. The SettingsWindow status row uses a local `Style` with a `DataTrigger Binding="{Binding StatusMessage}" Value=""` that flips `Visibility` to `Collapsed`. The default `Setter` is `Visible`, so any non-empty message shows. No new `IValueConverter` class, no `Converter` resource registration.
+
+9. **`IsCancel="True"` on the Close button** wires Esc to the button's `Click` event automatically. The handler still calls `Hide()` rather than `Close()` so the user's window position (set on first show) is preserved across opens. The `Window_KeyDown` handler is still present (so other keys can be added later) but the Esc case is now handled by the button's `IsCancel`.
+
+10. **Composition-root teardown order.** `_settingsWindow` is closed between the tray disposal and the popover-view-model disposal (same dependency tier as `MainWindow`). The startup service has no native handle to release — drop the reference and let GC handle it. The exception logger remains the last thing disposed.
+
+11. **`Test count unchanged ≠ surface verified.** Adding `SettingsWindow.xaml` / `.cs` did NOT change the test count for the xUnit suite beyond the 24 new `StartupServiceTests`. The XAML surface verifier (above) + `dotnet build` (catches missing `StaticResource` and binding type mismatches) are the only signals that the new window is wired correctly end-to-end. A manual smoke test (Task 12, `docs/SMOKE_TEST.md`) is required to verify the visual layout.
+
+12. **The verifier's regex bug applies to the new script too.** The `winrt-wpf-desktop` skill's `scripts/verify-xaml-surface.py` uses a *non-capturing* group `(?:=>|\\{)` in the property scanner; the new `verify-settings-xaml-surface.py` follows the same pattern. If you re-implement either regex inline and the comparison always fails, that's why. Copy the regex verbatim and double-check `(?:...)` is non-capturing.
 
 ---
 
@@ -375,6 +433,13 @@ Plan §Task 9 is fully implemented. Behaviour shipped:
 - **The XAML surface verifier's regex bug.** `scripts/verify-xaml-surface.py` from the `winrt-wpf-desktop` skill uses `(=>|\{)` (capturing) in the property scanner, which makes `re.findall` return tuples. The `set()` comparison then always fails. Fix: change to `(?:=>|\{)` (non-capturing) so `findall` returns just the property name. Symptom: every binding shows as missing even though they all exist.
 - **`SystemParameters.WorkArea` updates automatically on display change.** No `SystemEvents.DisplaySettingsChanged` subscription is required — the property re-reads on every access, so a resolution change is picked up on the next show without invalidation logic. The popover's `ShowPopover` calls `_placement.ComputeAnchoredPosition(...)` directly, which reads `WorkArea` fresh every time.
 - **The exception logger must be constructed BEFORE any service that can throw.** The composition root installs the logger as step 0 so a failure during mutex acquisition, service construction, view-model wiring, window setup, or tray attachment is captured in `%LocalAppData%\TrackDot\crash.log` rather than only the visual-studio debug stream.
+- **`HKCU\...\Run` paths with spaces MUST be quoted** when stored under the per-user Run key. The Windows Run-key parser splits on whitespace inside an unquoted string; every per-user install path on Windows contains a space (`%LocalAppData%\Programs\App\`). The detection path must accept BOTH quoted and unquoted stored values (the parser accepts both; third-party tools frequently write the unquoted form). `OrdinalIgnoreCase` + trailing-separator trim is the comparison recipe.
+- **`Enable` opens the registry key TWICE — once for the `IsEnabled` read, once for the write.** Idempotent methods that check state before mutating re-read on every call. Asserting idempotency by counting open-counts is wrong; assert on the WRITE surface (the value dictionary, the file contents) instead, AND assert the open-count delta is exactly +1 (one read, no second write open).
+- **`Microsoft.Win32.RegistryKey.SetValue(name, null, kind)` triggers CS8604** even though passing `null` deletes the value (documented Win32 behaviour). Suppress with `(object?)value!` — the cast matches the parameter's declared `object` type and the `!` is the "I know it's not null when non-null" assertion. Do not change to a non-null sentinel; the registry-adapter seam's `WriteValue(name, null)` = delete contract needs to round-trip through it.
+- **`StartupService` stays `sealed`; test seams live on internal ctor overloads.** One ctor takes a specific executable path (so tests don't depend on the test runner's host path); one with a marker `bool unresolvedPath` parameter leaves both path fields null (the `Environment.ProcessPath`-returned-null branch). Do not unseal the production class to subclass for tests.
+- **Save-immediately view-model needs field-rollback-on-throw.** When the `LaunchAtSignIn` setter persists optimistically, an exception must roll the backing field back to its prior value AND surface the exception's message via `StatusMessage`. A stale checkbox claiming "on" while the registry is off is worse than a click that visibly failed.
+- **`DataTrigger` beats a converter** for "visible-when-non-empty / collapsed-when-empty" patterns. Default `Setter Property="Visibility" Value="Visible"` + `DataTrigger Binding="{Binding StatusMessage}" Value="" Setter Property="Visibility" Value="Collapsed"`. No new `IValueConverter`, no `Converter` resource registration.
+- **`IsCancel="True"` on the Close button** wires Esc to the button's `Click` event automatically. The handler still calls `Hide()` (not `Close()`) so the user's window position is preserved across opens.
 
 ---
 
@@ -386,17 +451,18 @@ TrackDot/
 ├── .gitattributes
 ├── .hermes/
 │   ├── HANDOFF.md          (this file)
-│   └── plans/
-│       └── 2026-08-09_000000-track-dot-windows-smtc-popover.md
-├── App.xaml                (untouched - has StartupUri="MainWindow.xaml", will be edited in Task 9)
-├── App.xaml.cs             (untouched empty partial class)
+│   ├── plans/
+│   │   └── 2026-08-09_000000-track-dot-windows-smtc-popover.md
+│   └── verify-settings-xaml-surface.py
+├── App.xaml                (resources: brushes, transport-button style, tray context menu, TaskbarIcon)
+├── App.xaml.cs             (composition root)
 ├── AssemblyInfo.cs         (untouched)
 ├── Commands/
 │   └── AsyncRelayCommand.cs
 ├── Converters/
 │   └── TimeSpanTextConverter.cs
-├── MainWindow.xaml         (untouched template Grid)
-├── MainWindow.xaml.cs      (untouched template)
+├── MainWindow.xaml
+├── MainWindow.xaml.cs
 ├── Models/
 │   ├── MediaPlaybackState.cs
 │   ├── MediaSessionSnapshot.cs
@@ -418,11 +484,17 @@ TrackDot/
 │   ├── WindowPlacementService.cs
 │   ├── IUnhandledExceptionSink.cs
 │   ├── FileUnhandledExceptionSink.cs
-│   └── UnhandledExceptionLogger.cs
+│   ├── UnhandledExceptionLogger.cs
+│   ├── IStartupService.cs           (Task 10)
+│   ├── IRegistryKey.cs              (Task 10)
+│   └── RegistryKeyAdapter.cs        (Task 10)
+├── SettingsWindow.xaml              (Task 10)
+├── SettingsWindow.xaml.cs           (Task 10)
 ├── ViewModels/
 │   ├── DispatcherUiTicker.cs
 │   ├── IUiTicker.cs
-│   └── MainViewModel.cs
+│   ├── MainViewModel.cs
+│   └── SettingsViewModel.cs         (Task 10)
 ├── TrackDot.csproj
 ├── TrackDot.sln
 ├── TrackDot.csproj.user    (untouched)
@@ -437,6 +509,7 @@ TrackDot/
     ├── ProgressInterpolationTests.cs
     ├── SingleInstanceGuardTests.cs
     ├── SmokeTests.cs
+    ├── StartupServiceTests.cs        (Task 10)
     ├── ThumbnailDecoderTests.cs
     ├── TrayIconServiceTests.cs
     ├── UnhandledExceptionLoggerTests.cs
@@ -445,12 +518,7 @@ TrackDot/
 ```
 
 Need to be created (planned, do not yet exist):
-- `Models/` complete (no more needed)
-- `ViewModels/SettingsViewModel.cs` (Task 10)
 - `tests/TrackDot.Tests/ServiceGenerationTests.cs`, `ViewModelLifecycleTests.cs` (Task 11)
-- `Services/WindowPlacementService.cs` (Task 9 — was deferred from Task 7)
-- `Services/IStartupService.cs`, `StartupService.cs` (Task 10)
-- `SettingsWindow.xaml` + `.cs` (Task 10)
 - `Assets/PlaceholderArt.png` (Tasks 4 / 11)
 
 ---
@@ -465,7 +533,7 @@ dotnet test TrackDot.sln -c Debug --no-build
 dotnet build TrackDot.sln -c Release
 ```
 
-Current `dotnet test` status: 169 / 169 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model + 6 single-instance + 8 tray-icon + 10 placement + 13 exception-logger). Stable across Debug and Release (5× Debug stress runs in this session, zero flakes).
+Current `dotnet test` status: 193 / 193 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model + 6 single-instance + 8 tray-icon + 10 placement + 13 exception-logger + 24 startup). Stable across Debug and Release (full Debug + Release cycle in the Task 10 shipping session, zero flakes).
 Current `dotnet build` status: Debug and Release both build with 0 warnings, 0 errors.
 
 ---
