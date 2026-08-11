@@ -27,6 +27,7 @@
     <Compile Include="TrayIconServiceTests.cs" />
     <Compile Include="WindowPlacementTests.cs" />
     <Compile Include="UnhandledExceptionLoggerTests.cs" />
+    <Compile Include="StartupServiceTests.cs" />
   </ItemGroup>
 
   <ItemGroup>

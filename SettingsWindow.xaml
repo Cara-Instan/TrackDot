@@ -1,0 +1,62 @@
+<Window x:Class="TrackDot.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="TrackDot — Settings"
+        Width="380" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{StaticResource PanelBrush}"
+        Foreground="{StaticResource TextBrush}"
+        Closing="Window_Closing"
+        KeyDown="Window_KeyDown">
+    <Window.Resources>
+        <!-- Visibility for the status row: collapsed when the
+             message is empty, visible otherwise. A trigger is
+             used in place of a dedicated converter so the
+             settings window does not pull in additional
+             production surface area. -->
+        <Style x:Key="StatusRowStyle" TargetType="TextBlock">
+            <Setter Property="Visibility" Value="Visible" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding StatusMessage}" Value="">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+    <Border Padding="16">
+        <StackPanel>
+            <TextBlock Text="Settings"
+                       FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />
+            <CheckBox x:Name="LaunchAtSignInCheckBox"
+                      Content="Launch TrackDot at sign-in"
+                      IsChecked="{Binding LaunchAtSignIn, Mode=TwoWay}"
+                      Foreground="{StaticResource TextBrush}"
+                      Margin="0,0,0,6" />
+            <TextBlock TextWrapping="Wrap"
+                       Foreground="{StaticResource MutedBrush}"
+                       FontSize="12"
+                       Margin="22,0,0,12">
+                <Run Text="When enabled, TrackDot starts automatically when you sign in to Windows." />
+                <LineBreak />
+                <Run Text="The setting is stored per user in the registry:" />
+                <LineBreak />
+                <Run Text="{Binding RegistryKeyPath, Mode=OneWay}" FontFamily="Consolas" />
+                <Run Text=" / " />
+                <Run Text="{Binding RegistryValueName, Mode=OneWay}" FontFamily="Consolas" />
+            </TextBlock>
+            <TextBlock x:Name="StatusRow"
+                       Text="{Binding StatusMessage, Mode=OneWay}"
+                       Foreground="#F28B82"
+                       FontSize="12"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,12"
+                       Style="{StaticResource StatusRowStyle}" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Close" Width="80" Height="28"
+                        Click="OnCloseClicked"
+                        IsCancel="True" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

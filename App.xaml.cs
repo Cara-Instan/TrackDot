@@ -49,6 +49,9 @@ public partial class App : Application
     private ITrayIconHandle? _trayHandle;
     private MainViewModel? _viewModel;
     private MainWindow? _mainWindow;
+    private SettingsViewModel? _settingsViewModel;
+    private SettingsWindow? _settingsWindow;
+    private IStartupService? _startupService;
     private IWindowPlacementService? _placement;
     private DispatcherUiTicker? _ticker;
     private MediaControllerService? _mediaService;
@@ -98,6 +101,17 @@ public partial class App : Application
         _tray = new TrayIconService(_trayHandle, _mainWindow);
         _tray.ShutdownRequested += OnTrayShutdownRequested;
 
+        // Step 4b: settings UI. The startup service is backed
+        // by the live per-user registry; the view-model owns a
+        // single LaunchAtSignIn boolean that persists to the
+        // registry immediately on every toggle. The window is
+        // created hidden — the tray Settings click is what
+        // shows it.
+        _startupService = new StartupService(new RegistryKeyFactory());
+        _settingsViewModel = new SettingsViewModel(_startupService);
+        _settingsWindow = new SettingsWindow();
+        _settingsWindow.SetViewModel(_settingsViewModel);
+
         // Step 5: kick off SMTC discovery asynchronously so a
         // failure during initialization does not block the tray
         // icon from appearing. The post-init path updates the
@@ -108,12 +122,15 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        // Set the shutdown flag so any in-flight MainWindow
-        // Closing events are not turned into hides. The
-        // type-name is fully qualified to escape the
-        // Application.MainWindow property shadow (see Task 8
-        // gotcha #1 in HANDOFF.md).
+        // Set the shutdown flag so any in-flight MainWindow /
+        // SettingsWindow Closing events are not turned into
+        // hides. The type-name is fully qualified to escape
+        // the Application.MainWindow property shadow (see
+        // Task 8 gotcha #1 in HANDOFF.md). The settings
+        // window does not have a same-name collision but is
+        // qualified for symmetry.
         TrackDot.MainWindow.IsShuttingDown = true;
+        TrackDot.SettingsWindow.IsShuttingDown = true;
 
         // Tear down in reverse-construction order. Each step is
         // idempotent / null-safe so a half-constructed OnStartup
@@ -121,6 +138,17 @@ public partial class App : Application
         try { _tray?.Dispose(); } catch { /* swallow — best effort */ }
         _tray = null;
         _trayHandle = null;
+
+        // Settings window and view-model live in the same
+        // dependency tier as MainWindow: constructed last,
+        // torn down alongside. The startup service is a plain
+        // object with no native handle to release — drop the
+        // reference and let GC handle it.
+        try { _settingsWindow?.Close(); } catch { /* swallow */ }
+        _settingsWindow = null;
+        try { _settingsViewModel?.Dispose(); } catch { /* swallow */ }
+        _settingsViewModel = null;
+        _startupService = null;
 
         try { _mainWindow?.Close(); } catch { /* swallow */ }
         _mainWindow = null;
@@ -194,10 +222,9 @@ public partial class App : Application
 
     private void OnOpenSettingsClicked(object sender, RoutedEventArgs e)
     {
-        // Settings window is owned by Task 10. For now, surface
-        // a debug message so the menu item is wired and visible.
-        System.Diagnostics.Debug.WriteLine(
-            "[TrackDot] Settings menu clicked — Settings window not yet implemented (Task 10).");
+        // ShowSettings is idempotent — a second tray click
+        // activates the window instead of duplicating it.
+        _settingsWindow?.ShowSettings();
     }
 
     private void OnExitClicked(object sender, RoutedEventArgs e)
