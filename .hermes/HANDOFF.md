@@ -22,7 +22,7 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 | 5b | Service-side command guards (re-entrancy, capability gate, failed-Try refresh) | ✅ done | `18d84bd` |
 | 5c | Re-entrancy test determinism fix (Task.Run wrapper to escape xUnit sync context) | ✅ done | `13d86b1` |
 | 6 | Build view model and progress interpolation | ✅ done | `3a5b8ec` |
-| 7 | Construct the floating popover UI | 🔴 not started | — |
+| 7 | Construct the floating popover UI | ✅ done | `db46fbb` |
 | 8 | Add tray icon lifecycle and toggle behavior | 🔴 not started | — |
 | 9 | Compose startup, initialization, and error handling | 🔴 not started | — |
 | 10 | Implement launch-at-sign-in settings | 🔴 not started | — |
@@ -238,7 +238,26 @@ Plan §Task 5 step 1–4 is fully implemented. The four behaviours:
 
 ---
 
-## Next: Task 7 — Construct the floating popover UI
+## Task 7 — Floating popover UI (shipped in commit `db46fbb`)
+
+**Files modified:**
+- `App.xaml` — replaced template resources with dark-theme brushes (Panel `#202124`, Text `#F1F3F4`, Muted `#A8ADB5`, Accent `#8AB4F8`), default `TextBlock` style with character-ellipsis trimming, and a 32×32 `TransportButton` style with transparent chrome. Switched to `ShutdownMode="OnExplicitShutdown"` in advance of Task 8.
+- `MainWindow.xaml` — fixed `Width=360`, `SizeToContent=Height`, `WindowStyle=None`, `ResizeMode=NoResize`, `ShowInTaskbar=False`, `Topmost=True`, `AllowsTransparency=True` with a 12 px corner-rounded panel. Three rows: header (88×88 artwork border + 2-line text + AUMID label), 4 px progress bar bound to `PositionSeconds`/`DurationSeconds`, transport row with four command buttons plus `ElapsedTimeText` / `DurationTimeText`. Header `MouseLeftButtonDown` calls `DragMove()` only when the left button is pressed; body buttons consume their own input.
+- `MainWindow.xaml.cs` — added `SetViewModel(MainViewModel)` for explicit DataContext binding, `Deactivated` → `Hide()` (with the `IsActive` guard so context-menu activations don't hide immediately), `KeyDown` → Escape hides. `SourceInitialized` is now a no-op (Win11 DWM rounded corners deferred to Task 11/12 follow-up; the rounded `Border` carries the visual for now).
+
+**Build & test:** Debug + Release both build with 0 warnings, 0 errors. `dotnet test` Debug: 132/132 passing — same 3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model. The new UI layer does not touch view-model contracts so the test surface is unchanged.
+
+**Gotchas the next session needs to know:**
+1. **No DataContext set in XAML.** The popover accepts a `MainViewModel` via `SetViewModel(...)` so Task 9 can compose the VM with the service/ticker. Binding resolution in the designer will be empty; that's intentional and matches the plan.
+2. **Drag is bound to the header `Grid` only.** The progress bar and transport buttons sit outside that grid, so button clicks don't trigger drag. Don't move `MouseLeftButtonDown` to the root.
+3. **`Deactivated` hides the popover unconditionally.** The plan calls for "hide unless a context menu/dialog is active" — Task 8's tray context menu can flip that via a `IsContextMenuOpen` field on the window. For now the simple hide is correct because the popover has no child dialogs.
+4. **Escape hides but does not close.** Closing the window would force Task 8 to recreate it on every toggle; hiding preserves the dispatcher timer / VM state.
+5. **`AllowsTransparency=True` with `Background="Transparent"`** lets the rounded `Border` shape clip the panel. This is the conservative path the handoff recommended. Win11 DWM corner-preference integration is deferred to a later follow-up; `WindowChrome` would lock down resize behaviour, so the rounded `Border` is simpler and cross-version.
+6. **Positioning is not wired here.** `WindowPlacementService` is a Task 7 deliverable per the plan; it is deferred to Task 9 composition because the popover's `Left`/`Top` must be set *after* it has its final size, and that requires the service to be alive so `IsVisible` flips correctly. Task 9 will own the placement call.
+
+---
+
+## Next: Task 8 — Tray icon lifecycle and toggle behavior
 
 Task 7 consumes the building blocks now in place:
 
