@@ -420,9 +420,47 @@
         </Style>
         <Style x:Key="DarkSeparatorStyle" BasedOn="{StaticResource ThemeSeparatorStyle}" TargetType="Separator" />
 
+        <!-- Top-Header Quick Action Icon Button (Pin, Hotkeys, Settings, About) -->
+        <Style x:Key="HeaderActionButton" TargetType="Button">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="2,0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Border"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="12"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource ButtonHoverBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource ButtonPressedBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <ContextMenu x:Key="TrayContextMenu" x:Shared="False" Style="{StaticResource ThemeContextMenuStyle}">
+            <MenuItem x:Name="OpenHotkeysMenuItem" Header="Keyboard Shortcuts" Style="{StaticResource ThemeMenuItemStyle}"
+                      Click="OnOpenHotkeysClicked" />
             <MenuItem x:Name="OpenSettingsMenuItem" Header="Settings" Style="{StaticResource ThemeMenuItemStyle}"
                       Click="OnOpenSettingsClicked" />
+            <MenuItem x:Name="OpenAboutMenuItem" Header="About TrackDot" Style="{StaticResource ThemeMenuItemStyle}"
+                      Click="OnOpenAboutClicked" />
             <Separator Style="{StaticResource ThemeSeparatorStyle}" />
             <MenuItem x:Name="ExitMenuItem" Header="Exit TrackDot" Style="{StaticResource ThemeMenuItemStyle}"
                       Click="OnExitClicked" />

@@ -159,8 +159,76 @@ public partial class MainWindow : Window, IPopoverHost
     }
 
 
+    private Action? _onOpenSettings;
+    private Action? _onOpenAbout;
+    private Action? _onOpenHotkeys;
+    private IWindowSettingsService? _windowSettingsService;
+
+    /// <summary>
+    /// Gets whether the popover window is pinned to stay open on focus loss.
+    /// </summary>
+    public bool IsPinned { get; private set; }
+
+    /// <summary>
+    /// Wires header action handlers (Settings, About, Hotkeys) and window settings service.
+    /// </summary>
+    public void SetHeaderActions(
+        Action? onOpenSettings,
+        Action? onOpenAbout,
+        Action? onOpenHotkeys,
+        IWindowSettingsService? windowSettingsService = null)
+    {
+        _onOpenSettings = onOpenSettings;
+        _onOpenAbout = onOpenAbout;
+        _onOpenHotkeys = onOpenHotkeys;
+        _windowSettingsService = windowSettingsService;
+
+        if (_windowSettingsService != null)
+        {
+            IsPinned = _windowSettingsService.IsPinned;
+            UpdatePinVisualState();
+        }
+    }
+
+    private void OnPinClicked(object sender, RoutedEventArgs e)
+    {
+        IsPinned = !IsPinned;
+        if (_windowSettingsService != null)
+        {
+            _windowSettingsService.IsPinned = IsPinned;
+        }
+        UpdatePinVisualState();
+    }
+
+    private void UpdatePinVisualState()
+    {
+        Topmost = IsPinned;
+        if (PinIconPath != null)
+        {
+            PinIconPath.Fill = IsPinned
+                ? (System.Windows.Media.Brush)FindResource("AccentBrush")
+                : (System.Windows.Media.Brush)FindResource("MutedBrush");
+        }
+    }
+
+    private void OnHotkeysClicked(object sender, RoutedEventArgs e)
+    {
+        _onOpenHotkeys?.Invoke();
+    }
+
+    private void OnSettingsClicked(object sender, RoutedEventArgs e)
+    {
+        _onOpenSettings?.Invoke();
+    }
+
+    private void OnAboutClicked(object sender, RoutedEventArgs e)
+    {
+        _onOpenAbout?.Invoke();
+    }
+
     private void Window_Deactivated(object? sender, EventArgs e)
     {
+        if (IsPinned) return;
         if (!IsActive) HidePopover();
     }
 

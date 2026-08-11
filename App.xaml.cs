@@ -28,6 +28,9 @@ public partial class App : Application
     private MainWindow? _mainWindow;
     private SettingsViewModel? _settingsViewModel;
     private SettingsWindow? _settingsWindow;
+    private AboutWindow? _aboutWindow;
+    private HotkeysWindow? _hotkeysWindow;
+    private WindowSettingsService? _windowSettingsService;
     private IStartupService? _startupService;
     private IThemeService? _themeService;
     private IWindowPlacementService? _placement;
@@ -54,31 +57,43 @@ public partial class App : Application
         _themeService = new ThemeService();
         _themeService.ApplyTheme(_themeService.SelectedTheme);
 
-        // Step 2: build media-control service, view-model, popover window.
+        // Step 2: build window settings & secondary windows (About, Hotkeys, Settings).
+        _windowSettingsService = new WindowSettingsService();
+        _startupService = new StartupService(new RegistryKeyFactory());
+        _settingsViewModel = new SettingsViewModel(_startupService, _themeService);
+        _settingsWindow = new SettingsWindow();
+        _settingsWindow.SetViewModel(_settingsViewModel, _themeService);
+
+        _aboutWindow = new AboutWindow();
+        _aboutWindow.SetThemeService(_themeService);
+
+        _hotkeysWindow = new HotkeysWindow();
+        _hotkeysWindow.SetThemeService(_themeService);
+
+        // Step 3: build media-control service, view-model, popover window.
         _mediaService = new MediaControllerService();
         _ticker = new DispatcherUiTicker();
         _viewModel = new MainViewModel(_mediaService, _ticker);
         _mainWindow = new MainWindow { DataContext = _viewModel };
         _mainWindow.SetViewModel(_viewModel);
+        _mainWindow.SetHeaderActions(
+            onOpenSettings: () => _settingsWindow?.ShowSettings(),
+            onOpenAbout: () => _aboutWindow?.ShowAbout(),
+            onOpenHotkeys: () => _hotkeysWindow?.ShowHotkeys(),
+            windowSettingsService: _windowSettingsService);
 
-        // Step 3: window-placement service.
+        // Step 4: window-placement service.
         _placement = new WindowPlacementService();
         _mainWindow.SetPlacement(_placement);
 
-        // Step 4: tray icon.
+        // Step 5: tray icon.
         var taskbarIcon = (TaskbarIcon)Resources["TrayIcon"];
         _trayHandle = new TrayIconHandle(taskbarIcon);
         _trayHandle.SetToolTipText(ToolTipTextHealthy);
         _tray = new TrayIconService(_trayHandle, _mainWindow);
         _tray.ShutdownRequested += OnTrayShutdownRequested;
 
-        // Step 4b: settings UI & theme integration.
-        _startupService = new StartupService(new RegistryKeyFactory());
-        _settingsViewModel = new SettingsViewModel(_startupService, _themeService);
-        _settingsWindow = new SettingsWindow();
-        _settingsWindow.SetViewModel(_settingsViewModel, _themeService);
-
-        // Step 5: async SMTC discovery.
+        // Step 6: async SMTC discovery.
         _ = InitializeMediaAsync();
     }
 
@@ -86,16 +101,24 @@ public partial class App : Application
     {
         _mainWindow?.BeginShutdown();
         _settingsWindow?.BeginShutdown();
+        _aboutWindow?.BeginShutdown();
+        _hotkeysWindow?.BeginShutdown();
 
         try { _tray?.Dispose(); } catch { /* swallow — best effort */ }
         _tray = null;
         _trayHandle = null;
+
+        try { _hotkeysWindow?.Close(); } catch { /* swallow */ }
+        _hotkeysWindow = null;
+        try { _aboutWindow?.Close(); } catch { /* swallow */ }
+        _aboutWindow = null;
 
         try { _settingsWindow?.Close(); } catch { /* swallow */ }
         _settingsWindow = null;
         try { _settingsViewModel?.Dispose(); } catch { /* swallow */ }
         _settingsViewModel = null;
         _startupService = null;
+        _windowSettingsService = null;
 
         try { _themeService?.Dispose(); } catch { /* swallow */ }
         _themeService = null;
@@ -139,10 +162,19 @@ public partial class App : Application
         }
     }
 
+    private void OnOpenHotkeysClicked(object sender, RoutedEventArgs e)
+    {
+        _hotkeysWindow?.ShowHotkeys();
+    }
 
     private void OnOpenSettingsClicked(object sender, RoutedEventArgs e)
     {
         _settingsWindow?.ShowSettings();
+    }
+
+    private void OnOpenAboutClicked(object sender, RoutedEventArgs e)
+    {
+        _aboutWindow?.ShowAbout();
     }
 
     private void OnExitClicked(object sender, RoutedEventArgs e)

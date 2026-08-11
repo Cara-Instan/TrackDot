@@ -29,11 +29,12 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             
-            <!-- Header: Artwork + Title / Artist / Source App Badge -->
+            <!-- Header: Artwork + Title / Artist / Source App Badge + Top Action Toolbar -->
             <Grid Grid.Row="0" MouseLeftButtonDown="Header_MouseLeftButtonDown" Background="Transparent">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="84" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Border Width="84" Height="84" Background="{DynamicResource ArtworkBackgroundBrush}" CornerRadius="10" ClipToBounds="True">
                     <Grid>
@@ -54,7 +55,7 @@
                         </Image>
                     </Grid>
                 </Border>
-                <StackPanel Grid.Column="1" Margin="14,2,0,0" VerticalAlignment="Center">
+                <StackPanel Grid.Column="1" Margin="14,2,6,0" VerticalAlignment="Center">
                     <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="Bold" TextTrimming="CharacterEllipsis"
                                ToolTip="{Binding Title}" />
                     <TextBlock Text="{Binding Artist}" Foreground="{DynamicResource MutedBrush}" FontSize="13" Margin="0,3,0,0" TextTrimming="CharacterEllipsis"
@@ -85,6 +86,51 @@
                                    FontSize="10" 
                                    FontWeight="SemiBold" />
                     </Border>
+                </StackPanel>
+
+                <!-- Top Header Action Buttons Toolbar (Pin, Keyboard, Settings, About) -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,0,0,0">
+                    <!-- Pin / Keep Window Open Button -->
+                    <Button x:Name="PinButton"
+                            Style="{StaticResource HeaderActionButton}"
+                            Click="OnPinClicked"
+                            ToolTip="Pin popover (Keep window open)"
+                            AutomationProperties.Name="Pin window">
+                        <Path x:Name="PinIconPath"
+                              Data="M 12,2 L 16,6 L 13,9 L 14,14 L 10,10 L 6,14 L 7,9 L 4,6 Z M 9,15 L 4,20"
+                              Fill="{DynamicResource MutedBrush}"
+                              Width="14" Height="14" Stretch="Uniform" />
+                    </Button>
+
+                    <!-- Keyboard Shortcuts Button -->
+                    <Button Style="{StaticResource HeaderActionButton}"
+                            Click="OnHotkeysClicked"
+                            ToolTip="Keyboard Shortcuts"
+                            AutomationProperties.Name="Keyboard Shortcuts">
+                        <Path Data="M 2,4 H 22 V 18 H 2 Z M 4,6 V 8 H 7 V 6 Z M 9,6 V 8 H 12 V 6 Z M 14,6 V 8 H 17 V 6 Z M 19,6 V 8 H 20 V 6 Z M 4,10 V 12 H 6 V 10 Z M 8,10 V 12 H 16 V 10 Z M 18,10 V 12 H 20 V 10 Z M 4,14 V 16 H 20 V 14 Z"
+                              Fill="{DynamicResource MutedBrush}"
+                              Width="13" Height="13" Stretch="Uniform" />
+                    </Button>
+
+                    <!-- Settings Window Button -->
+                    <Button Style="{StaticResource HeaderActionButton}"
+                            Click="OnSettingsClicked"
+                            ToolTip="Settings"
+                            AutomationProperties.Name="Settings">
+                        <Path Data="M 19.14,12.94 C 19.18,12.63 19.2,12.32 19.2,12 C 19.2,11.68 19.18,11.37 19.14,11.06 L 21.46,9.25 C 21.67,9.08 21.73,8.78 21.59,8.54 L 19.39,4.73 C 19.25,4.49 18.96,4.4 18.72,4.49 L 15.99,5.59 C 15.43,5.16 14.82,4.8 14.16,4.53 L 13.75,1.63 C 13.71,1.37 13.48,1.18 13.22,1.18 L 8.8,1.18 C 8.54,1.18 8.31,1.37 8.27,1.63 L 7.86,4.53 C 7.2,4.8 6.59,5.16 6.03,5.59 L 3.3,4.49 C 3.06,4.4 2.77,4.49 2.63,4.73 L 0.43,8.54 C 0.29,8.78 0.35,9.08 0.56,9.25 L 2.88,11.06 C 2.84,11.37 2.82,11.68 2.82,12 C 2.82,12.32 2.84,12.63 2.88,12.94 L 0.56,14.75 C 0.35,14.92 0.29,15.22 0.43,15.46 L 2.63,19.27 C 2.77,19.51 3.06,19.6 3.3,19.51 L 6.03,18.41 C 6.59,18.84 7.2,19.2 7.86,19.47 L 8.27,22.37 C 8.31,22.63 8.54,22.82 8.8,22.82 L 13.22,22.82 C 13.48,22.82 13.71,22.63 13.75,22.37 L 14.16,19.47 C 14.82,19.2 15.43,18.84 15.99,18.41 L 18.72,19.51 C 18.96,19.6 19.25,19.51 19.39,19.27 L 21.59,15.46 C 21.73,15.22 21.67,14.92 21.46,14.75 Z M 11,15.5 C 9.07,15.5 7.5,13.93 7.5,12 C 7.5,10.07 9.07,8.5 11,8.5 C 12.93,8.5 14.5,10.07 14.5,12 C 14.5,13.93 12.93,15.5 11,15.5 Z"
+                              Fill="{DynamicResource MutedBrush}"
+                              Width="13" Height="13" Stretch="Uniform" />
+                    </Button>
+
+                    <!-- About Window Button -->
+                    <Button Style="{StaticResource HeaderActionButton}"
+                            Click="OnAboutClicked"
+                            ToolTip="About TrackDot"
+                            AutomationProperties.Name="About TrackDot">
+                        <Path Data="M 11,7 H 13 V 9 H 11 Z M 11,11 H 13 V 17 H 11 Z M 12,2 C 6.48,2 2,6.48 2,12 C 2,17.52 6.48,22 12,22 C 17.52,22 22,17.52 22,12 C 22,6.48 17.52,2 12,2 Z M 12,20 C 7.59,20 4,16.41 4,12 C 4,7.59 7.59,4 12,4 C 16.41,4 20,7.59 20,12 C 20,16.41 16.41,20 12,20 Z"
+                              Fill="{DynamicResource MutedBrush}"
+                              Width="13" Height="13" Stretch="Uniform" />
+                    </Button>
                 </StackPanel>
             </Grid>
 
