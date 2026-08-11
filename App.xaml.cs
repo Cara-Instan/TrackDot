@@ -36,6 +36,7 @@ public partial class App : Application
     private IWindowPlacementService? _placement;
     private DispatcherUiTicker? _ticker;
     private MediaControllerService? _mediaService;
+    private GlobalHotkeyService? _globalHotkeyService;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -60,7 +61,7 @@ public partial class App : Application
         // Step 2: build window settings & secondary windows (About, Hotkeys, Settings).
         _windowSettingsService = new WindowSettingsService();
         _startupService = new StartupService(new RegistryKeyFactory());
-        _settingsViewModel = new SettingsViewModel(_startupService, _themeService);
+        _settingsViewModel = new SettingsViewModel(_startupService, _themeService, _windowSettingsService);
         _settingsWindow = new SettingsWindow();
         _settingsWindow.SetViewModel(_settingsViewModel, _themeService);
 
@@ -82,6 +83,15 @@ public partial class App : Application
             onOpenHotkeys: () => _hotkeysWindow?.ShowHotkeys(),
             windowSettingsService: _windowSettingsService);
 
+        // Step 3b: global hotkey service.
+        _globalHotkeyService = new GlobalHotkeyService(
+            _viewModel,
+            onToggleWindow: () => _tray?.TogglePopover(),
+            onOpenSettings: () => _settingsWindow?.ShowSettings());
+        _mainWindow.SourceInitialized += (s, ev) => UpdateGlobalHotkeysRegistration();
+        _windowSettingsService.SettingsChanged += (s, ev) => UpdateGlobalHotkeysRegistration();
+        UpdateGlobalHotkeysRegistration();
+
         // Step 4: window-placement service.
         _placement = new WindowPlacementService();
         _mainWindow.SetPlacement(_placement);
@@ -97,12 +107,38 @@ public partial class App : Application
         _ = InitializeMediaAsync();
     }
 
+    private void UpdateGlobalHotkeysRegistration()
+    {
+        if (_globalHotkeyService == null || _mainWindow == null || _windowSettingsService == null) return;
+        var helper = new System.Windows.Interop.WindowInteropHelper(_mainWindow);
+        if (helper.Handle == IntPtr.Zero)
+        {
+            helper.EnsureHandle();
+        }
+        var hwnd = helper.Handle;
+        if (hwnd == IntPtr.Zero) return;
+
+        if (_windowSettingsService.EnableGlobalHotkeys)
+        {
+            if (!_globalHotkeyService.IsRegistered)
+                _globalHotkeyService.Register(hwnd);
+        }
+        else
+        {
+            if (_globalHotkeyService.IsRegistered)
+                _globalHotkeyService.Unregister();
+        }
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
         _mainWindow?.BeginShutdown();
         _settingsWindow?.BeginShutdown();
         _aboutWindow?.BeginShutdown();
         _hotkeysWindow?.BeginShutdown();
+
+        try { _globalHotkeyService?.Dispose(); } catch { /* swallow */ }
+        _globalHotkeyService = null;
 
         try { _tray?.Dispose(); } catch { /* swallow — best effort */ }
         _tray = null;
