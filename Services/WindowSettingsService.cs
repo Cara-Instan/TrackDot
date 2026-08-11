@@ -84,7 +84,7 @@ public sealed class WindowSettingsService : IWindowSettingsService
 
     private static string PortableSettingsPath => System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");
 
-    private sealed class PortableSettingsData
+    public class PortableSettingsData
     {
         public bool PinToTop { get; set; }
         public int OpacityPercent { get; set; } = 100;

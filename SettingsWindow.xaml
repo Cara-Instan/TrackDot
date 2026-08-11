@@ -67,7 +67,7 @@
             <!-- Appearance / Theme Section -->
             <TextBlock Text="Appearance"
                        FontSize="14" FontWeight="SemiBold" Margin="0,0,0,6" />
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                 <RadioButton Content="System default"
                              IsChecked="{Binding IsSystemTheme, Mode=TwoWay}"
                              Style="{StaticResource ThemeRadioButtonStyle}" />
@@ -78,6 +78,49 @@
                              IsChecked="{Binding IsLightTheme, Mode=TwoWay}"
                              Style="{StaticResource ThemeRadioButtonStyle}" />
             </StackPanel>
+
+            <!-- Window Transparency / Opacity Section -->
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Popover Opacity"
+                               Foreground="{DynamicResource TextBrush}"
+                               FontSize="12" />
+                    <TextBlock Text="Adjust transparency of the floating mini player"
+                               Foreground="{DynamicResource MutedBrush}"
+                               FontSize="11" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Slider x:Name="OpacitySlider"
+                            Width="110"
+                            Minimum="20"
+                            Maximum="100"
+                            TickFrequency="5"
+                            IsSnapToTickEnabled="True"
+                            Value="{Binding OpacityPercent, Mode=TwoWay}"
+                            VerticalAlignment="Center"
+                            Margin="0,0,8,0"
+                            Style="{StaticResource VolumeSliderStyle}" />
+                    <TextBlock Text="{Binding OpacityDisplayText}"
+                               Foreground="{DynamicResource TextBrush}"
+                               FontSize="12"
+                               Width="38"
+                               TextAlignment="Right"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+
+            <!-- Global Hotkeys Section -->
+            <TextBlock Text="Shortcuts"
+                       FontSize="14" FontWeight="SemiBold" Margin="0,0,0,6" />
+            <CheckBox x:Name="EnableGlobalHotkeysCheckBox"
+                      Content="Enable system-wide global hotkeys (Ctrl+Alt+Space, etc.)"
+                      IsChecked="{Binding EnableGlobalHotkeys, Mode=TwoWay}"
+                      Foreground="{DynamicResource TextBrush}"
+                      Margin="0,0,0,16" />
 
             <!-- Startup Section -->
             <TextBlock Text="Startup"

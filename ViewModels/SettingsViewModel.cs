@@ -14,6 +14,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly IStartupService _startup;
     private readonly IThemeService? _theme;
+    private readonly IWindowSettingsService? _windowSettings;
     private bool _disposed;
 
     /// <summary>
@@ -30,6 +31,26 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     /// the empty string.
     /// </summary>
     private string _statusMessage = string.Empty;
+
+    /// <summary>
+    /// Window opacity as a percentage integer [20–100].
+    /// </summary>
+    public int OpacityPercent
+    {
+        get => _windowSettings?.OpacityPercent ?? 100;
+        set
+        {
+            if (_windowSettings == null || _windowSettings.OpacityPercent == value) return;
+            _windowSettings.OpacityPercent = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(OpacityDisplayText));
+        }
+    }
+
+    /// <summary>
+    /// Formatted display text for current opacity percentage.
+    /// </summary>
+    public string OpacityDisplayText => $"{OpacityPercent}%";
 
     /// <summary>
     /// True when TrackDot is registered to launch at
@@ -57,6 +78,20 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
                 StatusMessage = ex.Message;
                 OnPropertyChanged(nameof(StatusMessage));
             }
+        }
+    }
+
+    /// <summary>
+    /// True when global system hotkeys are enabled.
+    /// </summary>
+    public bool EnableGlobalHotkeys
+    {
+        get => _windowSettings?.EnableGlobalHotkeys ?? true;
+        set
+        {
+            if (_windowSettings == null || _windowSettings.EnableGlobalHotkeys == value) return;
+            _windowSettings.EnableGlobalHotkeys = value;
+            OnPropertyChanged();
         }
     }
 
@@ -119,13 +154,29 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>The registry path used for the Run-key entry.</summary>
     public string RegistryKeyPath => @"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 
-    /// <summary>Constructs a view-model bound to startup and theme services.</summary>
-    public SettingsViewModel(IStartupService startup, IThemeService? theme = null)
+    /// <summary>Constructs a view-model bound to startup, theme, and window settings services.</summary>
+    public SettingsViewModel(
+        IStartupService startup,
+        IThemeService? theme = null,
+        IWindowSettingsService? windowSettings = null)
     {
         ArgumentNullException.ThrowIfNull(startup);
         _startup = startup;
         _theme = theme;
+        _windowSettings = windowSettings;
         _launchAtSignIn = startup.IsEnabled;
+
+        if (_windowSettings != null)
+        {
+            _windowSettings.SettingsChanged += OnWindowSettingsChanged;
+        }
+    }
+
+    private void OnWindowSettingsChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(OpacityPercent));
+        OnPropertyChanged(nameof(OpacityDisplayText));
+        OnPropertyChanged(nameof(EnableGlobalHotkeys));
     }
 
     /// <inheritdoc/>
@@ -139,5 +190,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        if (_windowSettings != null)
+        {
+            _windowSettings.SettingsChanged -= OnWindowSettingsChanged;
+        }
     }
 }
