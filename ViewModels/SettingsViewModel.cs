@@ -1,36 +1,19 @@
 using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using TrackDot.Models;
 using TrackDot.Services;
 
 namespace TrackDot.ViewModels;
 
 /// <summary>
 /// Settings window view-model. Exposes the launch-at-sign-in
-/// toggle, mirrors it to <see cref="IStartupService.IsEnabled"/>,
-/// and persists immediately on every toggle.
+/// toggle and theme selection (System, Dark, Light).
 /// </summary>
-/// <remarks>
-/// <para>
-/// "Save immediately on toggle" is the chosen UX (Task 10 plan
-/// §4 — the plan explicitly says "choose one and test it").
-/// The alternative ("Apply" button) requires a separate
-/// dirty-tracking path and a second source-of-truth field;
-/// for a single-checkbox dialog the explicit-save model adds
-/// complexity without benefit.
-/// </para>
-/// <para>
-/// If <see cref="IStartupService.Enable"/> throws (e.g. the
-/// executable path cannot be resolved), the toggle is rolled
-/// back to its previous value. This keeps the view-model in
-/// sync with the registry state — a stale checkbox that
-/// claims "on" while the registry is off is worse than a
-/// click that visibly failed.
-/// </para>
-/// </remarks>
 public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly IStartupService _startup;
+    private readonly IThemeService? _theme;
     private bool _disposed;
 
     /// <summary>
@@ -44,15 +27,13 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>
     /// Diagnostic message shown in the window footer.
     /// Non-empty only when a save attempt failed; otherwise
-    /// the empty string. Surfaced so the user can see *why*
-    /// their click did nothing.
+    /// the empty string.
     /// </summary>
     private string _statusMessage = string.Empty;
 
     /// <summary>
     /// True when TrackDot is registered to launch at
-    /// sign-in. Toggling the property writes the change to
-    /// the per-user <c>...\Run</c> registry key immediately.
+    /// sign-in.
     /// </summary>
     public bool LaunchAtSignIn
     {
@@ -63,10 +44,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
             _launchAtSignIn = value;
             OnPropertyChanged();
 
-            // Persist immediately. If Enable throws
-            // (path-unresolved etc.) the registry state is
-            // unchanged and we must roll back the field so
-            // the checkbox matches reality.
             try
             {
                 if (value) _startup.Enable();
@@ -84,10 +61,46 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>
+    /// Selected application theme mode (System, Dark, Light).
+    /// </summary>
+    public AppThemeMode SelectedTheme
+    {
+        get => _theme?.SelectedTheme ?? AppThemeMode.System;
+        set
+        {
+            if (_theme == null || _theme.SelectedTheme == value) return;
+            _theme.SelectedTheme = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsSystemTheme));
+            OnPropertyChanged(nameof(IsDarkTheme));
+            OnPropertyChanged(nameof(IsLightTheme));
+        }
+    }
+
+    /// <summary>Convenience helper for RadioButton binding.</summary>
+    public bool IsSystemTheme
+    {
+        get => SelectedTheme == AppThemeMode.System;
+        set { if (value) SelectedTheme = AppThemeMode.System; }
+    }
+
+    /// <summary>Convenience helper for RadioButton binding.</summary>
+    public bool IsDarkTheme
+    {
+        get => SelectedTheme == AppThemeMode.Dark;
+        set { if (value) SelectedTheme = AppThemeMode.Dark; }
+    }
+
+    /// <summary>Convenience helper for RadioButton binding.</summary>
+    public bool IsLightTheme
+    {
+        get => SelectedTheme == AppThemeMode.Light;
+        set { if (value) SelectedTheme = AppThemeMode.Light; }
+    }
+
+    /// <summary>
     /// Non-empty when the most recent toggle failed to
-    /// persist to the registry. The window binds this to a
-    /// footer label so the user knows their click did
-    /// nothing.
+    /// persist to the registry.
     /// </summary>
     public string StatusMessage
     {
@@ -100,25 +113,18 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    /// <summary>
-    /// The value name used for the Run-key entry. Surfaced
-    /// as a read-only display string so the user can locate
-    /// the entry in regedit if they want to verify the
-    /// write.
-    /// </summary>
+    /// <summary>The value name used for the Run-key entry.</summary>
     public string RegistryValueName => RegistryKeyFactory.ValueName;
 
-    /// <summary>
-    /// The registry path used for the Run-key entry. See
-    /// <see cref="RegistryValueName"/>.
-    /// </summary>
+    /// <summary>The registry path used for the Run-key entry.</summary>
     public string RegistryKeyPath => @"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 
-    /// <summary>Constructs a view-model bound to the supplied startup service.</summary>
-    public SettingsViewModel(IStartupService startup)
+    /// <summary>Constructs a view-model bound to startup and theme services.</summary>
+    public SettingsViewModel(IStartupService startup, IThemeService? theme = null)
     {
         ArgumentNullException.ThrowIfNull(startup);
         _startup = startup;
+        _theme = theme;
         _launchAtSignIn = startup.IsEnabled;
     }
 
@@ -133,7 +139,5 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        // No subscriptions to release — the startup service
-        // is owned by the composition root and torn down there.
     }
 }

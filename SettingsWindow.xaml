@@ -5,16 +5,12 @@
         Width="380" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        Background="{StaticResource PanelBrush}"
-        Foreground="{StaticResource TextBrush}"
+        Background="{DynamicResource PanelBrush}"
+        Foreground="{DynamicResource TextBrush}"
         Closing="Window_Closing"
-        KeyDown="Window_KeyDown">
+        KeyDown="Window_KeyDown"
+        Icon="pack://application:,,,/Assets/AppIcon.ico">
     <Window.Resources>
-        <!-- Visibility for the status row: collapsed when the
-             message is empty, visible otherwise. A trigger is
-             used in place of a dedicated converter so the
-             settings window does not pull in additional
-             production surface area. -->
         <Style x:Key="StatusRowStyle" TargetType="TextBlock">
             <Setter Property="Visibility" Value="Visible" />
             <Style.Triggers>
@@ -23,18 +19,76 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+
+        <!-- Theme RadioButton Style -->
+        <Style x:Key="ThemeRadioButtonStyle" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Margin" Value="0,0,16,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+
+        <!-- Styled Window Button -->
+        <Style x:Key="SettingsButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource BadgeBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BadgeBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource ButtonHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource ButtonPressedBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     <Border Padding="16">
         <StackPanel>
             <TextBlock Text="Settings"
-                       FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />
+                       FontSize="18" FontWeight="SemiBold" Margin="0,0,0,14" />
+            
+            <!-- Appearance / Theme Section -->
+            <TextBlock Text="Appearance"
+                       FontSize="14" FontWeight="SemiBold" Margin="0,0,0,6" />
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                <RadioButton Content="System default"
+                             IsChecked="{Binding IsSystemTheme, Mode=TwoWay}"
+                             Style="{StaticResource ThemeRadioButtonStyle}" />
+                <RadioButton Content="Dark"
+                             IsChecked="{Binding IsDarkTheme, Mode=TwoWay}"
+                             Style="{StaticResource ThemeRadioButtonStyle}" />
+                <RadioButton Content="Light"
+                             IsChecked="{Binding IsLightTheme, Mode=TwoWay}"
+                             Style="{StaticResource ThemeRadioButtonStyle}" />
+            </StackPanel>
+
+            <!-- Startup Section -->
+            <TextBlock Text="Startup"
+                       FontSize="14" FontWeight="SemiBold" Margin="0,0,0,6" />
             <CheckBox x:Name="LaunchAtSignInCheckBox"
                       Content="Launch TrackDot at sign-in"
                       IsChecked="{Binding LaunchAtSignIn, Mode=TwoWay}"
-                      Foreground="{StaticResource TextBrush}"
+                      Foreground="{DynamicResource TextBrush}"
                       Margin="0,0,0,6" />
             <TextBlock TextWrapping="Wrap"
-                       Foreground="{StaticResource MutedBrush}"
+                       Foreground="{DynamicResource MutedBrush}"
                        FontSize="12"
                        Margin="22,0,0,12">
                 <Run Text="When enabled, TrackDot starts automatically when you sign in to Windows." />
@@ -47,13 +101,14 @@
             </TextBlock>
             <TextBlock x:Name="StatusRow"
                        Text="{Binding StatusMessage, Mode=OneWay}"
-                       Foreground="#F28B82"
+                       Foreground="{DynamicResource StatusErrorBrush}"
                        FontSize="12"
                        TextWrapping="Wrap"
                        Margin="0,0,0,12"
                        Style="{StaticResource StatusRowStyle}" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="Close" Width="80" Height="28"
+                        Style="{StaticResource SettingsButtonStyle}"
                         Click="OnCloseClicked"
                         IsCancel="True" />
             </StackPanel>

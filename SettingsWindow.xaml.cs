@@ -1,7 +1,10 @@
 using System;
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
+using TrackDot.Services;
 using TrackDot.ViewModels;
 
 namespace TrackDot;
@@ -13,60 +16,55 @@ namespace TrackDot;
 /// intercepted and turned into a <see cref="Hide"/> while the
 /// application is still running.
 /// </summary>
-/// <remarks>
-/// <para>
-/// The window is opened by the tray menu via the composition
-/// root. Exactly one instance is alive at any time
-/// (<see cref="TrackDot.App"/> owns the field). The tray
-/// "Settings" click handler calls <see cref="ShowSettings"/>
-/// which is idempotent — a second click while the window is
-/// already visible brings it to the foreground instead of
-/// creating a duplicate.
-/// </para>
-/// <para>
-/// The window's data context is a <see cref="SettingsViewModel"/>
-/// that takes an <c>IStartupService</c> through the
-/// composition root. The view-model persists every toggle
-/// immediately, so a Close button (or Esc) simply hides the
-/// window — the registry state already matches the checkbox.
-/// </para>
-/// </remarks>
 public partial class SettingsWindow : Window
 {
+    private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+    private const int DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 = 19;
+
+    [DllImport("dwmapi.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+    private static extern void DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int pvAttribute, int cbAttribute);
+
     /// <summary>
-    /// Set by the composition root when the application is
-    /// in the process of shutting down. While <c>true</c>,
-    /// the <c>Closing</c> handler lets the window close
-    /// normally.
+    /// Signals that the application is shutting down.
+    /// Call <see cref="BeginShutdown"/> from the composition root
+    /// instead of setting a static property.
     /// </summary>
-    public static bool IsShuttingDown { get; set; }
+    private bool _isShuttingDown;
+
+    /// <summary>Called by the composition root before closing the window.</summary>
+    public void BeginShutdown() => _isShuttingDown = true;
 
     private SettingsViewModel? _viewModel;
+    private IThemeService? _themeService;
 
     public SettingsWindow()
     {
         InitializeComponent();
+        SourceInitialized += Window_SourceInitialized;
     }
 
     /// <summary>
-    /// Wires the window to its view-model. Called by
-    /// <c>App.OnStartup</c> after the view-model is
-    /// constructed.
+    /// Wires the window to its view-model and theme service.
     /// </summary>
-    public void SetViewModel(SettingsViewModel viewModel)
+    public void SetViewModel(SettingsViewModel viewModel, IThemeService? themeService = null)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         DataContext = viewModel;
         _viewModel = viewModel;
+
+        if (_themeService != null)
+        {
+            _themeService.EffectiveThemeChanged -= OnEffectiveThemeChanged;
+        }
+
+        _themeService = themeService;
+        if (_themeService != null)
+        {
+            _themeService.EffectiveThemeChanged += OnEffectiveThemeChanged;
+            UpdateTitleBarTheme(_themeService.IsEffectiveDark);
+        }
     }
 
-    /// <summary>
-    /// Shows the window. Idempotent: if already visible,
-    /// the window is activated instead of creating a new
-    /// instance. Hides instead of closes so the user's
-    /// window position (set on first show) is preserved
-    /// across opens.
-    /// </summary>
     public void ShowSettings()
     {
         if (!IsVisible)
@@ -75,21 +73,54 @@ public partial class SettingsWindow : Window
         }
         else
         {
-            // Bring to foreground — a second tray click on
-            // an already-open settings window must not move
-            // it behind the popover or lose focus.
             Activate();
+        }
+
+        if (_themeService != null)
+        {
+            UpdateTitleBarTheme(_themeService.IsEffectiveDark);
+        }
+    }
+
+    private void Window_SourceInitialized(object? sender, EventArgs e)
+    {
+        if (_themeService != null)
+        {
+            UpdateTitleBarTheme(_themeService.IsEffectiveDark);
+        }
+    }
+
+    private void OnEffectiveThemeChanged(object? sender, bool isDark)
+    {
+        Dispatcher.Invoke(() => UpdateTitleBarTheme(isDark));
+    }
+
+    private void UpdateTitleBarTheme(bool isDark)
+    {
+        try
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero) return;
+
+            int darkMode = isDark ? 1 : 0;
+            try
+            {
+                DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
+            }
+            catch
+            {
+                DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1, ref darkMode, sizeof(int));
+            }
+        }
+        catch
+        {
+            // Non-fatal if OS/DWM API call is unsupported
         }
     }
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
-        // While the application is shutting down, let the
-        // close happen normally. Otherwise the user pressing
-        // X (or Alt+F4, or the Close button) must not
-        // terminate the tray process — just hide the window
-        // and remain alive in the notification area.
-        if (!IsShuttingDown)
+        if (!_isShuttingDown)
         {
             e.Cancel = true;
             Hide();
@@ -107,10 +138,6 @@ public partial class SettingsWindow : Window
 
     private void OnCloseClicked(object sender, RoutedEventArgs e)
     {
-        // Hide rather than close: closing would force
-        // composition-root teardown to recreate the window
-        // on every open. The XAML marks the button IsCancel
-        // so Esc does the same thing.
         Hide();
     }
 }
