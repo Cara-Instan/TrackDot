@@ -4,6 +4,7 @@ using Xunit;
 
 namespace TrackDot.Tests;
 
+[Collection("PortableMode")]
 public class PortableModeTests : IDisposable
 {
     public PortableModeTests()

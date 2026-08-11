@@ -91,37 +91,45 @@ public sealed class WindowSettingsService : IWindowSettingsService
         public bool EnableGlobalHotkeys { get; set; } = true;
     }
 
+    private static readonly object PortableLock = new();
+
     private static PortableSettingsData LoadPortableSettings()
     {
-        try
+        lock (PortableLock)
         {
-            var path = PortableSettingsPath;
-            if (System.IO.File.Exists(path))
+            try
             {
-                var json = System.IO.File.ReadAllText(path);
-                var data = System.Text.Json.JsonSerializer.Deserialize<PortableSettingsData>(json);
-                if (data != null) return data;
+                var path = PortableSettingsPath;
+                if (System.IO.File.Exists(path))
+                {
+                    var json = System.IO.File.ReadAllText(path);
+                    var data = System.Text.Json.JsonSerializer.Deserialize<PortableSettingsData>(json);
+                    if (data != null) return data;
+                }
             }
+            catch
+            {
+                // Non-fatal fallback
+            }
+            return new PortableSettingsData();
         }
-        catch
-        {
-            // Non-fatal fallback
-        }
-        return new PortableSettingsData();
     }
 
     private static void SavePortableSettings(Action<PortableSettingsData> updateAction)
     {
-        try
+        lock (PortableLock)
         {
-            var data = LoadPortableSettings();
-            updateAction(data);
-            var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            System.IO.File.WriteAllText(PortableSettingsPath, json);
-        }
-        catch
-        {
-            // Non-fatal if write fails
+            try
+            {
+                var data = LoadPortableSettings();
+                updateAction(data);
+                var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                System.IO.File.WriteAllText(PortableSettingsPath, json);
+            }
+            catch
+            {
+                // Non-fatal if write fails
+            }
         }
     }
 

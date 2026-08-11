@@ -6,6 +6,7 @@ using Xunit;
 
 namespace TrackDot.Tests;
 
+[Collection("PortableMode")]
 public class SettingsViewModelTests
 {
     private class FakeStartupService : IStartupService

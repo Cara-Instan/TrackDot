@@ -4,6 +4,7 @@ using Xunit;
 
 namespace TrackDot.Tests;
 
+[Collection("PortableMode")]
 public class WindowSettingsServiceTests
 {
     [Fact]
@@ -71,10 +72,10 @@ public class WindowSettingsServiceTests
     [Fact]
     public void PortableMode_SaveAndLoadSettings_PersistsInPortableMode()
     {
+        var settingsFile = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");
         try
         {
             PortableMode.IsPortable = true;
-            var settingsFile = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");
             if (System.IO.File.Exists(settingsFile))
             {
                 System.IO.File.Delete(settingsFile);
@@ -92,14 +93,13 @@ public class WindowSettingsServiceTests
             Assert.True(sutLoaded.IsPinned);
             Assert.Equal(80, sutLoaded.OpacityPercent);
             Assert.False(sutLoaded.EnableGlobalHotkeys);
-
+        }
+        finally
+        {
             if (System.IO.File.Exists(settingsFile))
             {
                 System.IO.File.Delete(settingsFile);
             }
-        }
-        finally
-        {
             PortableMode.IsPortable = false;
         }
     }
