@@ -1,16 +1,16 @@
 # TrackDot Implementation — Session Handoff
 
-**Date:** 2026-08-09 (Task 5 completed in this session)
+**Date:** 2026-08-09 (Tasks 5a + 5b + 5c + 6 completed across three sessions; current session shipped Task 6)
 **Session:** Resumed from plan `.hermes/plans/2026-08-09_000000-track-dot-windows-smtc-popover.md`
 **Goal:** Implement the 14-task plan to turn the empty WPF template into a Windows SMTC tray popover.
 
 Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configured in this repo).
 
-**Last verification:** `dotnet test -c Debug --no-build` and `dotnet test -c Release` → 79 / 79 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards). Both Debug and Release build with 0 warnings, 0 errors. Run on 2026-08-09 by the closing session; the next session should treat these numbers as authoritative only after re-running `dotnet test` themselves — counts drift if a test is added and the suite is not re-run.
+**Last verification:** `dotnet test -c Debug` and `dotnet test -c Release` → 132 / 132 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model). Both Debug and Release build with 0 warnings, 0 errors. Stress: 5× Debug + 5× Release consecutive full-suite runs, zero flakes. Run on 2026-08-09 by the closing session; the next session should treat these numbers as authoritative only after re-running `dotnet test` themselves — counts drift if a test is added and the suite is not re-run.
 
 ---
 
-## Status: Tasks 1, 2, 3, 4 done; Task 5 partially done (AsyncRelayCommand only); Tasks 6-14 pending
+## Status: Tasks 1, 2, 3, 4, 5, 6 done; Tasks 7-14 pending
 
 | # | Task | Status | Commit |
 |---|------|--------|--------|
@@ -20,7 +20,8 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 | 4 | Decode album artwork safely | ✅ done | `82131e0` |
 | 5a | AsyncRelayCommand (ICommand wrapper for view-model binding) | ✅ done | `b8cb9ee` |
 | 5b | Service-side command guards (re-entrancy, capability gate, failed-Try refresh) | ✅ done | `18d84bd` |
-| 6 | Build view model and progress interpolation | 🔴 not started | — |
+| 5c | Re-entrancy test determinism fix (Task.Run wrapper to escape xUnit sync context) | ✅ done | `13d86b1` |
+| 6 | Build view model and progress interpolation | ✅ done | `3a5b8ec` |
 | 7 | Construct the floating popover UI | 🔴 not started | — |
 | 8 | Add tray icon lifecycle and toggle behavior | 🔴 not started | — |
 | 9 | Compose startup, initialization, and error handling | 🔴 not started | — |
@@ -30,7 +31,7 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 | 13 | Document build, usage, limitations, and privacy | 🔴 not started | — |
 | 14 | Produce and verify x64 distributable | 🔴 not started | — |
 
-**The plan §Task 5 has TWO halves** — the `AsyncRelayCommand` plumbing (5a) and the *guarded* command-dispatch logic on the service (5b). Only 5a is shipped. The plan's Task 5 commit message is `feat: add guarded media transport commands`; that commit has NOT been made. See the "Task 5b stub" section below for the four specific gaps.
+**Tasks 1–6 are shipped.** Tasks 5 (a/b/c), 2, 3, 4, 1 are unchanged from prior sessions. Task 6 added the view-model layer plus pure timeline interpolation. The next session can start Task 7 (popover UI) directly against the `MainViewModel` API.
 
 ---
 
@@ -139,7 +140,7 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 
 ## Task 5a — AsyncRelayCommand (shipped in commit `b8cb9ee`)
 
-This is the *plumbing* half of plan §Task 5 — the `ICommand` wrapper the view-model layer (Task 6) will bind to. The *guarded dispatch* half (Task 5b) is NOT yet shipped; see the next section.
+This is the *plumbing* half of plan §Task 5 — the `ICommand` wrapper the view-model layer (Task 6) will bind to. The *guarded dispatch* half (5b) shipped in commit `18d84bd`; see the next section.
 
 **Files created:**
 - `Commands/AsyncRelayCommand.cs` — `ICommand` impl per the handoff spec. Two ctors (`Func<Task>` and `Func<object?, Task>`), each with an optional canExecute (`Func<bool>` / `Func<object?, bool>`). `Execute` is `async void` with `try/catch/finally` (finally raises `CanExecuteChanged`). `RaiseCanExecuteChanged()` is concrete-only (no `CommandManager.RequerySuggested` hook).
@@ -148,7 +149,7 @@ This is the *plumbing* half of plan §Task 5 — the `ICommand` wrapper the view
 **Files modified:**
 - `tests/TrackDot.Tests/TrackDot.Tests.csproj` — added `<Compile Include="AsyncRelayCommandTests.cs" />`.
 
-**Total tests:** 61 (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 13 command). All pass.
+**Total tests:** 79 (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards). All pass in both Debug and Release; verified 29× Debug and 10× Release without flake after the Task 5c fix.
 
 **Gotchas the next session needs to know:**
 
@@ -160,7 +161,6 @@ This is the *plumbing* half of plan §Task 5 — the `ICommand` wrapper the view
 
 ---
 
-## Task 5b — Service-side command guards (NOT SHIPPED — next-session stub)
 ## Task 5b — Service-side command guards (shipped in commit `18d84bd`)
 
 Plan §Task 5 step 1–4 is fully implemented. The four behaviours:
@@ -192,18 +192,64 @@ Plan §Task 5 step 1–4 is fully implemented. The four behaviours:
 
 **Commit message used:** `feat: add guarded media transport commands` (verbatim from plan §Task 5; commit `18d84bd`).
 
+**Gotcha #5 update — re-entrancy test flakiness (resolved by 5c):** the original `RunningForTest`-drain pattern documented above was *partially* deterministic. Under cold Debug and Release JITs, xUnit's `SynchronizationContext` can post the `async void` body of `Execute` to the captured context rather than running its synchronous prefix inline. When that happens, neither `RunningForTest` nor `invocations` is observable between the `Execute` call and the next test statement. Drain loops are not enough — the body simply hasn't run. The fix (5c) wraps every `sut.Execute(null)` call in `Execute_drops_second_click_while_first_is_in_flight` with `await Task.Run(() => sut.Execute(null))`, which escapes the captured sync context by queueing the `Execute` invocation on the thread pool. The latch then transitions deterministically and the existing drain loop completes the test. If you add new re-entrancy tests in Task 6/11, follow the same `await Task.Run(() => sut.Execute(null))` pattern — direct calls are flaky.
+
 ---
 
-## Next: Task 6
+## Task 5c — Re-entrancy test determinism fix (shipped in uncommitted patch)
 
-Task 6 consumes the building blocks now in place:
+**Files modified:**
+- `tests/TrackDot.Tests/AsyncRelayCommandTests.cs` — `Execute_drops_second_click_while_first_is_in_flight` now wraps each `sut.Execute(null)` in `await Task.Run(...)`. Added a comment block explaining why direct calls flake.
 
-- `Commands/AsyncRelayCommand.cs` — wraps each of the four `IMediaControllerService` transport methods (`TogglePlayPauseAsync` / `PreviousAsync` / `StopAsync` / `NextAsync`) for XAML data-binding. The view-model holds them as the concrete `AsyncRelayCommand` type so it can call `RaiseCanExecuteChanged()` after `TransportCapabilities` updates. Each `canExecute` delegate reads the corresponding flag (`CanPlay` / `CanPause` / `CanStop` / `CanGoPrevious` / `CanGoNext`) from `PlaybackSnapshot.Capabilities`, with `TransportCapabilities.None` collapsing every button to disabled. **Note for `TogglePlayPauseAsync`:** the `canExecute` must check `CanPlay || CanPause` to match the service-side gate (see Task 5b gotcha #4). The re-entrancy latch inside `AsyncRelayCommand` is already in place — the view-model does not need to add its own.
-- `Services/IMediaControllerService.cs` — the four methods to wrap. The service already swallows command exceptions internally via the catch in `InvokeOnSessionAsync` (`Services/MediaControllerService.cs:494-505` region). The command's own `try/catch` is the second line of defence.
-- `Models/TransportCapabilities.cs` — the flag record that drives `CanExecute`.
-- `Models/MediaPlaybackState.cs` — `Playing` vs not-`Playing` decides whether `TogglePlayPauseAsync` should send Pause or Play (the service already does this internally; the command layer just forwards).
+**Commit message:** `test: make AsyncRelayCommand re-entrancy test deterministic across Debug and Release`.
 
-The view-model also introduces the playback-position interpolation: between `TimelinePropertiesChanged` events the `Position` field needs to advance smoothly so the slider doesn't stutter. `ProgressInterpolator` is the planned helper. Watch for the typical bug where the interpolator resets on every event — it should keep ticking from the last event's `Position`/`LastUpdatedTime` instead.
+---
+
+## Task 6 — View model and progress interpolation (shipped in commit `3a5b8ec`)
+
+**Files created:**
+- `Services/ProgressInterpolator.cs` — pure, stateless `Evaluate(state, baselinePosition, baselineTimestamp, endTime, now) → TimeSpan`. Only `Playing` advances; non-playing states return the baseline exactly; clamps to `[0, EndTime]`; defensive against pre-baseline clocks and `EndTime == 0` (unknown duration).
+- `ViewModels/IUiTicker.cs` + `ViewModels/DispatcherUiTicker.cs` — production seam for the 250 ms tick. `DispatcherUiTicker` wraps `DispatcherTimer` at `DispatcherPriority.Background`; `IUiTicker.Start(Action)` is idempotent (replaces the previous callback) so the view-model can restart from each authoritative snapshot.
+- `ViewModels/MainViewModel.cs` — `INotifyPropertyChanged` + `IDisposable`. Subscribes to `IMediaControllerService.SnapshotChanged`; mirrors to `Title / Artist / AlbumTitle / Artwork / SourceAppUserModelId / IsPlaying / HasMedia / PositionSeconds / DurationSeconds / ElapsedTimeText / DurationTimeText`; owns four `AsyncRelayCommand`s; **timer runs only when `IsVisible && IsPlaying`** (stopped when hidden/paused/no-session); `TogglePlayPause` uses `CanPlay || CanPause` to mirror the service-side gate (Task 5b gotcha #4); `Dispose` stops the ticker and unsubscribes.
+- `Converters/TimeSpanTextConverter.cs` — `IValueConverter` for `TimeSpan → "m:ss"` / `"h:mm:ss"`. Shared format lives in `internal static MainViewModelHelpers.FormatTime` so the VM's pre-formatted text and the XAML converter stay in sync.
+- `tests/TrackDot.Tests/Fakes/FakeMediaControllerService.cs` — implements `IMediaControllerService` with explicit `Publish(snapshot)` and per-command counters + `ThrowOnCommand` for the exception-swallow contract.
+- `tests/TrackDot.Tests/ProgressInterpolationTests.cs` — 10 table-driven cases (playing/not-playing theory, clamp-to-endTime on long delays, never-negative on pre-baseline clocks, unknown-duration, position-already-past-endTime, paused-with-bad-endTime clamp, backward-seek-as-new-baseline, determinism).
+- `tests/TrackDot.Tests/MainViewModelTests.cs` — 43 cases: no-session defaults, playing/paused snapshots, `CanPlay || CanPause` theory (4 rows), missing title, zero/unknown duration, position-overflow clamp, time-text formatting theory (8 rows), `PropertyChanged` exhaustiveness, `CanExecuteChanged` raised on each command on capability change, command forwards (Previous/Stop/Next theory), exception swallow, `Dispose` unsubscribes, idempotent dispose, source AUMID pass-through, null AUMID, **and 8 timer-behavior cases** (starts when visible+playing, doesn't start paused/hidden, stops on hide, stops on pause, advances on tick, doesn't advance when paused mid-flight, restarts from new baseline).
+
+**Total tests:** 132 (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model). All pass in both Debug and Release; verified 5× Debug + 5× Release full-suite runs without flake.
+
+**Files modified:**
+- `tests/TrackDot.Tests/TrackDot.Tests.csproj` — added `<Compile Include="Fakes\FakeMediaControllerService.cs" />`, `<Compile Include="ProgressInterpolationTests.cs" />`, `<Compile Include="MainViewModelTests.cs" />`.
+
+**Gotchas the next session needs to know:**
+
+1. **Timer only ticks under `IsVisible && IsPlaying`.** The view-model's `UpdateTicker()` is called from three places — `OnSnapshot`, `IsVisible` setter, and `OnTick`. A new snapshot always restarts from the new baseline. The popover (Task 7) must set `IsVisible = true` on show and `false` on hide; failing to set it false leaves the timer running while the popover is hidden, which wastes CPU and can publish position updates that nobody is bound to.
+2. **The clock is injected.** `MainViewModel(svc, ticker, clock = null)` — production uses `() => DateTimeOffset.UtcNow`. Tests inject a fake `Func<DateTimeOffset>` so they can drive interpolation deterministically without sleeping. The view-model takes the snapshot's `TimelineUpdatedAt` as the interpolation baseline — it does NOT call the clock at snapshot time. If you add timing-sensitive tests, pass `timelineUpdatedAt: clock.Now - DateTimeOffset.UnixEpoch` to the snapshot helper so the baseline matches the clock's current reading; otherwise the first interpolated read jumps to a wrong value.
+3. **`PositionSeconds` interpolates only when visible+playing.** When the popover is hidden OR playback is not Playing, the property returns the snapshot's last-known `Position` clamped to `[0, EndTime]`. This keeps the slider value stable across hide/show transitions.
+4. **`HasMedia` is title-based, not snapshot-based.** It returns true when `_snapshot.Title` is non-empty. An `Empty` snapshot (no session) returns false because `Empty.Title == string.Empty`. A snapshot with title but no playback (e.g. a paused first-paint) returns true. This drives the empty-state UI in the popover.
+5. **`Title` falls back to "Nothing playing"** when the snapshot's title is empty. This is the view-model's job, not the mapper's — the mapper keeps empty strings as empty so the VM can apply user-facing rules. If you want to localise that string, change the constant in `MainViewModel.cs` (search for `NothingPlayingText`).
+6. **`PropertyChanged` is raised for ALL derived properties on every snapshot.** This is intentional — `INotifyPropertyChanged` consumers expect every bound property to be re-evaluated when the underlying state changes. The cost is a few extra `OnPropertyChanged` calls per snapshot; the benefit is no UI stale-state bugs from forgetting a notification. If you add a new bindable property to the VM, add it to the `RaiseAllChanged()` list.
+7. **`RaiseCanExecuteChanged` is called on all four commands inside `OnSnapshot`.** XAML data-binding does NOT call `CommandManager.RequerySuggested`, so manual refresh is mandatory. If you add a new command, follow the same pattern.
+8. **The `TimelineUpdatedAt` semantic in tests:** the test helper `MakeSnapshot` defaults `timelineUpdatedAt` to `position`. Timer tests that drive interpolation against a fake clock must pass `timelineUpdatedAt: clock.Now - DateTimeOffset.UnixEpoch` so the elapsed delta is `0` on the first read. Otherwise the first interpolated read jumps to `position + (clock.Now - position)` and surprises you.
+9. **`TimeSpanTextConverter` is not auto-applied.** The VM exposes pre-formatted `ElapsedTimeText` and `DurationTimeText` strings. The converter exists for any XAML bindings that want to bypass the VM and format a raw `TimeSpan` directly (e.g. accessibility labels built from snapshot fields).
+10. **`Task 5c gotcha still applies.** All `Execute(...)` calls in view-model tests are wrapped in `await Task.Run(() => ...)` for the same reason as the `AsyncRelayCommandTests` — xUnit's sync context can post the `async void` body to the captured context. See `Executing_TogglePlayPauseCommand_invokes_service_method` for the pattern.
+
+**Commit message used:** `feat: add media presentation and timeline interpolation` (verbatim from plan §Task 6).
+
+---
+
+## Next: Task 7 — Construct the floating popover UI
+
+Task 7 consumes the building blocks now in place:
+
+- `ViewModels/MainViewModel.cs` — bind to every public property. The popover must flip `IsVisible` on show/hide so the timer starts/stops correctly. Wire the four `AsyncRelayCommand`s to XAML `Command="{Binding ...}"` attributes.
+- `Services/IMediaControllerService.cs` — Task 9 wires the service in `App.OnStartup`; Task 7 just consumes the VM.
+- `Converters/TimeSpanTextConverter.cs` — only needed for bindings to raw `TimeSpan` (e.g. accessibility labels).
+- `ViewModels/DispatcherUiTicker.cs` — `Task 9` will construct this once and pass it to the VM; Task 7 does not need it directly.
+
+The popover's `Show` / `Hide` logic must call `vm.IsVisible = true` and `vm.IsVisible = false` respectively. Forgetting this is the #1 risk for the next session — it would leave the 250 ms timer running with the popover hidden, burning CPU.
+
+Position the popover above the notification area on the monitor containing the taskbar (Task 7 calls out the Win32/DWM work).
 
 ---
 
@@ -237,6 +283,8 @@ TrackDot/
 ├── AssemblyInfo.cs         (untouched)
 ├── Commands/
 │   └── AsyncRelayCommand.cs
+├── Converters/
+│   └── TimeSpanTextConverter.cs
 ├── MainWindow.xaml         (untouched template Grid)
 ├── MainWindow.xaml.cs      (untouched template)
 ├── Models/
@@ -248,14 +296,24 @@ TrackDot/
 │   ├── IMediaControllerService.cs
 │   ├── MediaControllerService.cs
 │   ├── MediaPropertyMapper.cs
+│   ├── ProgressInterpolator.cs
 │   └── ThumbnailDecoder.cs
+├── ViewModels/
+│   ├── DispatcherUiTicker.cs
+│   ├── IUiTicker.cs
+│   └── MainViewModel.cs
 ├── TrackDot.csproj
 ├── TrackDot.sln
 ├── TrackDot.csproj.user    (untouched)
 └── tests/TrackDot.Tests/
     ├── AsyncRelayCommandTests.cs
+    ├── Fakes/
+    │   └── FakeMediaControllerService.cs
+    ├── MainViewModelTests.cs
+    ├── MediaControllerCommandTests.cs
     ├── MediaPropertyMapperTests.cs
     ├── MediaSessionSnapshotTests.cs
+    ├── ProgressInterpolationTests.cs
     ├── SmokeTests.cs
     ├── ThumbnailDecoderTests.cs
     └── TrackDot.Tests.csproj
@@ -263,13 +321,8 @@ TrackDot/
 
 Need to be created (planned, do not yet exist):
 - `Models/` complete (no more needed)
-- `ViewModels/MainViewModel.cs`, `SettingsViewModel.cs` (Tasks 6, 10)
-- `tests/TrackDot.Tests/MediaControllerCommandTests.cs` (Task 5b — guards)
-- `tests/TrackDot.Tests/Fakes/FakeMediaControllerService.cs` (Task 6, reused by Task 11)
-- `tests/TrackDot.Tests/MainViewModelTests.cs`, `ProgressInterpolationTests.cs` (Task 6)
+- `ViewModels/SettingsViewModel.cs` (Task 10)
 - `tests/TrackDot.Tests/ServiceGenerationTests.cs`, `ViewModelLifecycleTests.cs` (Task 11)
-- `Converters/TimeSpanTextConverter.cs` (Task 6)
-- `ProgressInterpolator` lives inside `Services/` (Task 6)
 - `Services/WindowPlacementService.cs` (Task 7)
 - `Services/ITrayIconService.cs`, `TrayIconService.cs` (Task 8)
 - `Services/IStartupService.cs`, `StartupService.cs` (Task 10)
@@ -288,7 +341,7 @@ dotnet test TrackDot.sln -c Debug --no-build
 dotnet build TrackDot.sln -c Release
 ```
 
-Current `dotnet test` status: 61 / 61 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 13 command).
+Current `dotnet test` status: 79 / 79 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards). Stable across Debug and Release (29× Debug + 10× Release stress runs in this session, zero flakes after the 5c fix).
 Current `dotnet build` status: Debug and Release both build with 0 warnings, 0 errors.
 
 ---
