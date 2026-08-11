@@ -6,11 +6,11 @@
 
 Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configured in this repo).
 
-**Last verification:** `dotnet test -c Debug` and `dotnet test -c Release` → **227 / 227 passing** (3 smoke + 11 snapshot + 12 mapper + 12 decoder + 16 command + 15 service-guards + 14 service-generation + 10 interpolation + 26 view-model + 10 view-model-lifecycle + 10 asset-resource + 6 single-instance + 8 tray-icon + 10 placement + 13 exception-logger + 24 startup). Both Debug and Release build with 0 warnings, 0 errors. The numbers above were re-verified end-to-end during the Task 11 shipping session. **Note**: the per-class counts listed above are top-level `[Fact]`/`[Theory]` declarations. `[Theory]` cases with `[InlineData]` rows add additional test cases that bump the count beyond the literal `+N`; the authoritative total is 227.
+**Last verification:** `dotnet test -c Debug` and `dotnet test -c Release` → **227 / 227 passing** (3 smoke + 11 snapshot + 12 mapper + 12 decoder + 16 command + 15 service-guards + 14 service-generation + 10 interpolation + 26 view-model + 10 view-model-lifecycle + 10 asset-resource + 6 single-instance + 8 tray-icon + 10 placement + 13 exception-logger + 24 startup). Both Debug and Release build with 0 warnings, 0 errors. Framework-dependent x64 publish artifact produced at `artifacts/win-x64-framework-dependent/TrackDot.exe` (25 MB, runtimeconfig requires `Microsoft.WindowsDesktop.App 8.0.0`). Launched cleanly from a clean checkout — second instance exits with code 1 (single-instance mutex). **Note**: the per-class counts listed above are top-level `[Fact]`/`[Theory]` declarations. `[Theory]` cases with `[InlineData]` rows add additional test cases that bump the count beyond the literal `+N`; the authoritative total is 227.
 
 ---
 
-## Status: Tasks 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 done; Tasks 12-14 pending
+## Status: Tasks 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 done
 
 | # | Task | Status | Commit |
 |---|------|--------|--------|
@@ -27,9 +27,9 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 | 9 | Compose startup, initialization, and error handling | ✅ done | `d0e4a7c` |
 | 10 | Implement launch-at-sign-in settings | ✅ done | `2e9a881` |
 | 11 | Add automated lifecycle tests and resource checks | ✅ done | `9e628ff` |
-| 12 | Windows integration validation (docs only - manual) | 🔴 not started | — |
-| 13 | Document build, usage, limitations, and privacy | 🔴 not started | — |
-| 14 | Produce and verify x64 distributable | 🔴 not started | — |
+| 12 | Windows integration validation (docs only - manual) | ✅ done | `29c7061` |
+| 13 | Document build, usage, limitations, and privacy | ✅ done | `742229b` |
+| 14 | Produce and verify x64 distributable | ✅ done | `cd03c59` |
 
 **Tasks 1–8 are shipped.** Tasks 1–6 are unchanged from prior sessions (handed off with full test counts). Task 7 added the floating popover UI. Task 8 added the tray-icon lifecycle (Hardcodet `TaskbarIcon`, context menu, single-instance mutex, tray-driven toggle, close-as-hide). The next session can start Task 9 (composition root / startup cleanup / global exception handlers) directly against the existing `App.OnStartup` / `App.OnExit` graph.
 
@@ -414,6 +414,76 @@ Plan §Task 9 is fully implemented. Behaviour shipped:
 
 ---
 
+## Task 12 — Windows integration validation (shipped in commit `29c7061`)
+
+Plan §Task 12 is fully implemented as a **docs + manual smoke matrix**. Behaviour shipped:
+
+1. **`docs/SMOKE_TEST.md`** — a 12-section integration matrix covering: no-session, Chrome/Edge (YouTube), Spotify, VLC (with the version-dependent SMTC caveat called out explicitly), unsupported capabilities, source churn, window placement + DPI at 100/125/150%, popover lifecycle, 30-minute hidden+paused soak, 15-minute playback soak, launch-at-sign-in, and unobserved-exception channels.
+2. **Pre-flight checklist** — every scenario starts with the same 5-step pre-flight (kill prior process, launch from explorer, confirm no taskbar button, confirm right-click menu, capture `crash.log` baseline).
+3. **Resource-baseline form** — `§4` of the doc is a copy-paste-able template for capturing `HandleCount`, `WorkingSet64`, `CPU` at start / +5 min / +15 min. A handle-count growth > 5% over 15 min without track changes is the explicit leak signal.
+4. **Known-limitations section** — captures the open product gaps honestly: OS-selected session only, `AllowsTransparency` rendering cost, VLC SMTC version variance, **the `PlaceholderArt.png` 1×1 file being unreferenced in XAML** (so the popover's artwork border shows the `#34373D` background when `Artwork == null`, not a visible fallback). No silent "fix" — every gap is named with the bounded patch that would address it.
+5. **Player-specific-failure isolation rule** — `§6` of the doc is explicit: a player integration failure is a defect to isolate, not grounds to revert earlier reviewed work. Reproduction steps + `crash.log` snippet + isolation note are required for any failure to count as documented.
+
+**Build & test:** No production code changes for Task 12 — the xUnit suite is unchanged at **227 / 227 passing** (Debug + Release). The doc was authored against the actual codebase (verified grep for `HttpClient`/`WebClient`/etc. — no networking in production), the actual `Runtimeconfig.json` requirements, the actual `StartupService` constants (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value `TrackDot`).
+
+**Gotchas the next session needs to know:**
+
+1. **`docs/SMOKE_TEST.md` is a manual test plan, not automated.** The `§6` exit-criteria require real launches against real players; the only signal the doc was authored honestly is that every claim about behaviour cites the production component name (e.g. `MediaControllerService.OpenThumbnailAsManagedStreamAsync`, `WindowPlacementService`, `UnhandledExceptionLogger`). When in doubt, grep the source.
+
+2. **The `PlaceholderArt.png` file is shipped but unused.** The csproj embeds it as a `<Resource>` and `AssetResourceTests.TrackDot_assembly_contains_PlaceholderArt_png_resource` confirms it lives in the `.g.resources` stream under `assets/placeholderart.png` (70 bytes, valid PNG magic). The XAML `<Image Source="{Binding Artwork}" />` does NOT reference it as a fallback when `Artwork` is null. Wiring it would be a one-line XAML change with a style trigger; deferred to a future pass.
+
+3. **The framework-dependent artifact at `artifacts/win-x64-framework-dependent/TrackDot.exe` is the launch path for all smoke scenarios.** Running via `dotnet run` from the project root uses `dotnet.exe` as the host process, which breaks the launch-at-sign-in detection (`StartupService.IsEnabled` would write `dotnet.exe` into the Run key).
+
+---
+
+## Task 13 — Build, usage, limitations, and privacy docs (shipped in commit `742229b`)
+
+Plan §Task 13 is fully implemented. Behaviour shipped:
+
+1. **`README.md`** — 238 lines covering features, prerequisites, full build / test / run commands, tray controls reference, launch-at-sign-in registry detail, project layout, build pitfalls, privacy posture, known limitations, publishing, and a pointer to `docs/SMOKE_TEST.md`.
+2. **All README commands executed verbatim from a clean checkout** during this session — `dotnet restore`, `dotnet build -c Debug`, `dotnet test -c Debug --no-build`, `dotnet build -c Release`, and the `./bin/x64/Release/net8.0-windows10.0.19041.0/TrackDot.exe` launch path. Every command produced the documented output (0 warnings / 0 errors / 227 passing / binary present).
+3. **Privacy claim is verified, not aspirational.** Section "Privacy" was written after `grep -rE "(System\.Net\.Http|HttpClient|WebClient|TcpClient|WebRequest|SmtpClient|FtpWebRequest|nuget\.org|api\.|telemetry|analytics|tracking)" --include="*.cs" --include="*.csproj" .` returned zero matches in production code (the one hit was a comment about field-tracking, not networking). The only file written outside the application directory is `crash.log`. The only registry value written is `HKCU\...\Run\TrackDot`, opt-in.
+4. **No placeholder screenshots.** Per plan §Task 13 step 6: "Add screenshots only after final UI validation; do not commit placeholder screenshots." The README has no images.
+5. **Build pitfalls section consolidates every gotcha from the per-task handoffs into one place** — so a fresh developer does not need to read all 13 previous gotcha lists to avoid the same trap. The 8 items cover: the `Microsoft.Windows.SDK.Contracts` prohibition, `--no-build` stale-binary hazard, AsyncRelayCommand re-entrancy test pattern (`await Task.Run(() => sut.Execute(null))`), `BitmapDecoder` ambiguity, `Application.MainWindow` vs `TrackDot.MainWindow` type collision, `pack://application:,,,/Assets/AppIcon.ico` URI requirement, `HKCU\...\Run` path-quoting requirement, and the `Enable` opens-twice idempotency contract.
+
+**Build & test:** No production code changes for Task 13. Test count unchanged at 227 / 227.
+
+**Gotchas the next session needs to know:**
+
+1. **The README documents the current behaviour, not an aspirational spec.** Every command, every path, every registry key, every test count matches what is actually shipped. If you change a behaviour, update the README in the same commit — do not let it drift.
+
+2. **The "Launch at sign-in" section quotes the Run-key value path explicitly.** This is intentional — users (and reviewers with `regedit`) will check. The path is `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\TrackDot = "<quoted full path>"`. The detection path (`IsEnabled`) accepts both quoted and unquoted stored values (`OrdinalIgnoreCase` + trailing-separator trim); the *stored* form is always quoted.
+
+3. **The `Build pitfalls` section is a maintenance liability if not kept current.** New gotchas found during future work should be appended to the README's pitfalls list, not just the HANDOFF.md. The two documents serve different audiences: README = fresh developer; HANDOFF.md = next-session resumption.
+
+---
+
+## Task 14 — Produce and verify x64 distributable (shipped in commit `cd03c59`)
+
+Plan §Task 14 is fully implemented. Behaviour shipped:
+
+1. **Framework-dependent x64 artifact produced** at `artifacts/win-x64-framework-dependent/TrackDot.exe`. 25 MB total (the `Microsoft.Windows.SDK.NET.dll` is 24 MB — the WinRT projection is shipped as a side-by-side assembly, not embedded). Runtime config declares `Microsoft.NETCore.App 8.0.0` + `Microsoft.WindowsDesktop.App 8.0.0` — both required on the target machine.
+2. **Single-instance mutex verified** — launched twice from the terminal; second instance exits with code 1 (Task 8 design). `Get-Process TrackDot | Measure` returns 1 after both launches.
+3. **Clean process shutdown verified** — `Stop-Process -Name TrackDot` leaves zero processes (no zombies).
+4. **Real defect discovered and fixed during verification.** `crash.log` at `%LocalAppData%\TrackDot\crash.log` had two identical `InvalidOperationException: A TwoWay or OneWayToSource binding cannot work on the read-only property 'PositionSeconds'` entries (from prior launches at 20:33 and 22:17). The ProgressBar `Value="{Binding PositionSeconds}"` and `Maximum="{Binding DurationSeconds}"` bindings default to `TwoWay` in WPF; `PositionSeconds` / `DurationSeconds` are get-only `double` properties on `MainViewModel`. The exception was caught by the dispatcher-unhandled-exception logger (Task 9), but the binding silently never produced values. **Fix:** added `Mode=OneWay` to both bindings. Verified by deleting `crash.log`, relaunching the published binary, waiting 5 s, and confirming the file was NOT recreated.
+
+**Files modified:**
+- `MainWindow.xaml` — `Maximum="{Binding DurationSeconds, Mode=OneWay}"` and `Value="{Binding PositionSeconds, Mode=OneWay}"`.
+
+**Build & test:** Debug + Release both build with 0 warnings, 0 errors. `dotnet test` Debug and Release: **227 / 227 passing** — the fix is XAML-only, no test surface changes. Republished artifact at `artifacts/win-x64-framework-dependent/TrackDot.exe`.
+
+**Gotchas the next session needs to know:**
+
+1. **The `TwoWay`-binding-on-read-only-property trap will repeat for any new get-only VM property bound to a WPF `DependencyProperty` whose `TwoWay` is the default.** WPF defaults `TwoWay` for: `ProgressBar.Value`, `Slider.Value`, `RangeBase.Value`, `TextBox.Text`, `PasswordBox.Password`, `Selector.SelectedItem`/`SelectedIndex`/`SelectedValue`, `DatePicker.SelectedDate`, `RichTextBox`-derived properties, `ToggleButton.IsChecked`, `Expander.IsExpanded`, `TreeView.SelectedItem`, `TabControl.SelectedIndex`, `ListBox.SelectedIndex`/`SelectedItem`, and a long tail of input controls. The fix is always `Mode=OneWay` on the binding. Do not add a setter to the VM to work around this — that would let the UI write back into derived presentation state.
+
+2. **The exception logger caught this bug, not the test suite.** The Task 11 test surface does NOT bind the popover's XAML — it tests the VM contracts and the service, not the binding wiring. This is the **third** finding of the "test count unchanged ≠ surface verified" pattern (after Task 10's `SettingsWindow` and Task 7's `MainWindow`). For any future XAML change, run the published binary and check `crash.log` is empty after a 5-second wait. Add it to the standard verification sequence in HANDOFF gotchas.
+
+3. **The published artifact does NOT contain a `Assets/` directory at the top level.** Both `AppIcon.ico` and `PlaceholderArt.png` are embedded into `TrackDot.dll`'s `.g.resources` stream (the WPF resource manager looks them up via the `pack://application:,,,/Assets/...` URI). Do not "fix" the missing directory by adding `<None Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />` — that would duplicate the asset and double the disk footprint. The pack URI is the canonical WPF pattern; the disk copy was an old-WinForms-era convention.
+
+4. **`Microsoft.Windows.SDK.NET.dll` is 24 MB and ships in the framework-dependent output.** This is the WinRT projection — it ships side-by-side with `TrackDot.dll` rather than being copied into `System32` or baked into the runtime. The framework-dependent artifact is therefore ~25 MB total on disk; a self-contained build would add the .NET runtime + WPF assemblies on top of that (probably 150 MB+). Plan §7 Decision point 4 calls for the framework-dependent artifact first; a self-contained follow-up is gated on measuring size + startup time against the framework-dependent baseline.
+
+5. **The `crash.log` from this session is preserved in the repo's history** via `git log -p cd03c59` (the fix commit) — the commit message quotes both timestamps and explains the root cause. Future bug-hunters investigating dispatcher exceptions should start there.
+
 ## Pitfalls to remember
 
 - **WinRT callbacks arrive on arbitrary threads.** The WPF UI thread binding will throw if you update `INotifyPropertyChanged` properties from a non-dispatcher thread. Always marshal through `SynchronizationContext` or `Dispatcher`.
@@ -440,6 +510,10 @@ Plan §Task 9 is fully implemented. Behaviour shipped:
 - **Save-immediately view-model needs field-rollback-on-throw.** When the `LaunchAtSignIn` setter persists optimistically, an exception must roll the backing field back to its prior value AND surface the exception's message via `StatusMessage`. A stale checkbox claiming "on" while the registry is off is worse than a click that visibly failed.
 - **`DataTrigger` beats a converter** for "visible-when-non-empty / collapsed-when-empty" patterns. Default `Setter Property="Visibility" Value="Visible"` + `DataTrigger Binding="{Binding StatusMessage}" Value="" Setter Property="Visibility" Value="Collapsed"`. No new `IValueConverter`, no `Converter` resource registration.
 - **`IsCancel="True"` on the Close button** wires Esc to the button's `Click` event automatically. The handler still calls `Hide()` (not `Close()`) so the user's window position is preserved across opens.
+- **`TwoWay`-binding-on-read-only-property trap (Task 14).** WPF defaults `Binding.Mode = TwoWay` for many input controls: `ProgressBar.Value`, `Slider.Value`, `RangeBase.Value`, `TextBox.Text`, `PasswordBox.Password`, `Selector.SelectedItem`/`SelectedIndex`/`SelectedValue`, `DatePicker.SelectedDate`, `RichTextBox` derived, `ToggleButton.IsChecked`, `Expander.IsExpanded`, `TreeView.SelectedItem`, `TabControl.SelectedIndex`, `ListBox.SelectedIndex`/`SelectedItem`. Binding any of those to a get-only VM property throws `InvalidOperationException` ("A TwoWay or OneWayToSource binding cannot work on the read-only property"). The dispatcher-exception logger catches it (no crash), but the binding silently never produces values. Fix: `Mode=OneWay` on the binding. Do NOT add a setter to the VM to work around — the UI would then write into derived presentation state.
+- **The exception logger catches what the test suite misses (Task 14).** xUnit covers contracts, lifecycle, and disposal. It does NOT cover binding wiring against the real `MainWindow.xaml` (the test surface has no `Application` instance + UI thread). When the popover's ProgressBar bound to `PositionSeconds`/`DurationSeconds` threw `InvalidOperationException` on every startup, the xUnit suite remained 227 / 227 — the bug was only visible in `%LocalAppData%\TrackDot\crash.log`. Standard verification for any future XAML change: launch the published binary, wait 5 seconds, confirm `crash.log` is empty. This is the third "test count unchanged ≠ surface verified" finding (after Tasks 7 and 10). Consider adding a smoke-launch step to the standard verification sequence.
+- **WPF resources are embedded in `TrackDot.g.resources`, not copied to disk.** The csproj `<Resource Include="Assets\AppIcon.ico" />` packs the asset into a single binary `.g.resources` stream under the project-relative path (lowercased, forward-slashed — e.g. `assets/appicon.ico`). The `pack://application:,,,/Assets/AppIcon.ico` URI in XAML resolves through that stream. The published artifact therefore does NOT contain an `Assets/` directory at the top level; the assets are inside `TrackDot.dll`. Do NOT "fix" this by adding `<None Include="...\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />` — that duplicates the asset and doubles the disk footprint. The pack URI is the canonical WPF pattern. To inspect the embedded assets programmatically, use `System.Resources.ResourceReader` on the `AssemblyName.g.resources` stream (this is what `AssetResourceTests.EnumerateWpfResourceEntries` does).
+- **`Microsoft.Windows.SDK.NET.dll` is ~24 MB and ships in the framework-dependent output.** It is the WinRT projection; it ships side-by-side with `TrackDot.dll` rather than being baked into the runtime. The framework-dependent artifact is therefore ~25 MB total on disk; a self-contained build would add the .NET runtime + WPF assemblies on top of that (probably 150 MB+). Plan §7 Decision point 4 calls for the framework-dependent artifact first; a self-contained follow-up is gated on measuring size + startup time against the framework-dependent baseline.
 
 ---
 
@@ -533,8 +607,9 @@ dotnet test TrackDot.sln -c Debug --no-build
 dotnet build TrackDot.sln -c Release
 ```
 
-Current `dotnet test` status: 193 / 193 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model + 6 single-instance + 8 tray-icon + 10 placement + 13 exception-logger + 24 startup). Stable across Debug and Release (full Debug + Release cycle in the Task 10 shipping session, zero flakes).
+Current `dotnet test` status: 227 / 227 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model + 6 single-instance + 8 tray-icon + 10 placement + 13 exception-logger + 24 startup). Stable across Debug and Release (full Debug + Release cycle in the Task 10 shipping session, zero flakes; re-verified end-to-end in the Task 12/13/14 shipping session including a published-binary launch).
 Current `dotnet build` status: Debug and Release both build with 0 warnings, 0 errors.
+Current `dotnet publish` status: `artifacts/win-x64-framework-dependent/TrackDot.exe` (25 MB, framework-dependent, runtimeconfig requires `Microsoft.WindowsDesktop.App 8.0.0`). Launched cleanly from a clean checkout; second instance exits with code 1.
 
 ---
 
