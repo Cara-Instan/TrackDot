@@ -29,7 +29,7 @@
                 </StackPanel>
             </Grid>
             <Grid Grid.Row="1" Margin="0,10,0,0">
-                <ProgressBar Minimum="0" Maximum="{Binding DurationSeconds}" Value="{Binding PositionSeconds}" Height="4" Foreground="{StaticResource AccentBrush}" />
+                <ProgressBar Minimum="0" Maximum="{Binding DurationSeconds, Mode=OneWay}" Value="{Binding PositionSeconds, Mode=OneWay}" Height="4" Foreground="{StaticResource AccentBrush}" />
             </Grid>
             <Grid Grid.Row="2" Margin="0,7,0,0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
