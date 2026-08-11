@@ -181,13 +181,32 @@ public partial class MainWindow : Window, IPopoverHost
         _onOpenSettings = onOpenSettings;
         _onOpenAbout = onOpenAbout;
         _onOpenHotkeys = onOpenHotkeys;
+
+        if (_windowSettingsService != null)
+        {
+            _windowSettingsService.SettingsChanged -= OnWindowSettingsChanged;
+        }
+
         _windowSettingsService = windowSettingsService;
 
         if (_windowSettingsService != null)
         {
-            IsPinned = _windowSettingsService.IsPinned;
-            UpdatePinVisualState();
+            _windowSettingsService.SettingsChanged += OnWindowSettingsChanged;
+            ApplyWindowSettings();
         }
+    }
+
+    private void OnWindowSettingsChanged(object? sender, EventArgs e)
+    {
+        ApplyWindowSettings();
+    }
+
+    private void ApplyWindowSettings()
+    {
+        if (_windowSettingsService == null) return;
+        IsPinned = _windowSettingsService.IsPinned;
+        Opacity = _windowSettingsService.WindowOpacity;
+        UpdatePinVisualState();
     }
 
     private void OnPinClicked(object sender, RoutedEventArgs e)
@@ -226,6 +245,31 @@ public partial class MainWindow : Window, IPopoverHost
         _onOpenAbout?.Invoke();
     }
 
+    private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.LeftButton == MouseButtonState.Pressed)
+        {
+            if (e.OriginalSource is DependencyObject dep)
+            {
+                if (FindParent<System.Windows.Controls.Primitives.ButtonBase>(dep) is not null ||
+                    FindParent<System.Windows.Controls.Slider>(dep) is not null ||
+                    FindParent<System.Windows.Controls.Primitives.Thumb>(dep) is not null)
+                {
+                    return;
+                }
+            }
+            DragMove();
+        }
+    }
+
+    private static T? FindParent<T>(DependencyObject child) where T : DependencyObject
+    {
+        DependencyObject? parentObject = System.Windows.Media.VisualTreeHelper.GetParent(child);
+        if (parentObject is null) return null;
+        if (parentObject is T parent) return parent;
+        return FindParent<T>(parentObject);
+    }
+
     private void Window_Deactivated(object? sender, EventArgs e)
     {
         if (IsPinned) return;
@@ -234,10 +278,83 @@ public partial class MainWindow : Window, IPopoverHost
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape)
+        if (_viewModel == null) return;
+
+        switch (e.Key)
         {
-            HidePopover();
-            e.Handled = true;
+            case Key.Escape:
+                HidePopover();
+                e.Handled = true;
+                break;
+
+            case Key.Space:
+            case Key.K:
+            case Key.MediaPlayPause:
+                if (_viewModel.TogglePlayPauseCommand.CanExecute(null))
+                    _viewModel.TogglePlayPauseCommand.Execute(null);
+                e.Handled = true;
+                break;
+
+            case Key.Right:
+            case Key.L:
+            case Key.MediaNextTrack:
+                if (_viewModel.NextCommand.CanExecute(null))
+                    _viewModel.NextCommand.Execute(null);
+                e.Handled = true;
+                break;
+
+            case Key.Left:
+            case Key.J:
+            case Key.MediaPreviousTrack:
+                if (_viewModel.PreviousCommand.CanExecute(null))
+                    _viewModel.PreviousCommand.Execute(null);
+                e.Handled = true;
+                break;
+
+            case Key.S:
+            case Key.MediaStop:
+                if (_viewModel.StopCommand.CanExecute(null))
+                    _viewModel.StopCommand.Execute(null);
+                e.Handled = true;
+                break;
+
+            case Key.O:
+            case Key.OemComma:
+                _onOpenSettings?.Invoke();
+                e.Handled = true;
+                break;
+
+            case Key.P:
+                OnPinClicked(this, new RoutedEventArgs());
+                e.Handled = true;
+                break;
+
+            case Key.M:
+                if (_viewModel.ToggleMuteCommand.CanExecute(null))
+                    _viewModel.ToggleMuteCommand.Execute(null);
+                e.Handled = true;
+                break;
+
+            case Key.Up:
+                AdjustVolume(5.0);
+                e.Handled = true;
+                break;
+
+            case Key.Down:
+                AdjustVolume(-5.0);
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void AdjustVolume(double deltaPercent)
+    {
+        if (_viewModel == null) return;
+        double current = _viewModel.VolumePercent;
+        double newVol = Math.Clamp(current + deltaPercent, 0.0, 100.0);
+        if (_viewModel.SetVolumeCommand.CanExecute(newVol))
+        {
+            _viewModel.SetVolumeCommand.Execute(newVol);
         }
     }
 
@@ -251,25 +368,6 @@ public partial class MainWindow : Window, IPopoverHost
         {
             e.Cancel = true;
             HidePopover();
-        }
-    }
-
-    private void Window_SourceInitialized(object? sender, EventArgs e)
-    {
-        // Extend the DWM glass frame to fill the entire window so the
-        // background renders transparent via hardware (DWM composition)
-        // rather than software rendering (AllowsTransparency). This is
-        // the recommended approach for frameless WPF windows on Win10/11.
-        var helper = new System.Windows.Interop.WindowInteropHelper(this);
-        if (helper.Handle == IntPtr.Zero) return;
-        try
-        {
-            var margins = new NativeMethods.MARGINS { cxLeftWidth = -1 };
-            NativeMethods.DwmExtendFrameIntoClientArea(helper.Handle, ref margins);
-        }
-        catch
-        {
-            // DWM unavailable (e.g. running in a VM without Aero); fall back gracefully.
         }
     }
 }

@@ -96,6 +96,39 @@ The progress bar advances by **local interpolation** between SMTC timeline event
 
 ---
 
+## Keyboard Shortcuts & Global Hotkeys
+
+TrackDot provides system-wide global hotkeys (when enabled in Settings) and local popover key bindings:
+
+### Global Hotkeys (System-Wide)
+
+| Action | Hotkey | Description |
+|---|---|---|
+| Toggle Popover | `Alt + Shift + T` | Show / hide the TrackDot popover window |
+| Play / Pause | `Ctrl + Alt + Space` | Toggle media playback globally |
+| Next Track | `Ctrl + Alt + Right` | Skip to next track globally |
+| Previous Track | `Ctrl + Alt + Left` | Skip to previous track globally |
+| Stop Track | `Ctrl + Alt + .` | Stop track playback globally |
+| Mute / Unmute | `Ctrl + Alt + M` | Toggle audio mute globally |
+| Volume Up / Down | `Ctrl + Alt + Up / Down` | Adjust volume by 5% globally |
+| Open Settings | `Ctrl + Alt + S` | Open TrackDot Settings window |
+
+### Local Popover Shortcuts (When Popover is Focused)
+
+| Action | Key(s) |
+|---|---|
+| Play / Pause | `Space`, `K`, or hardware `Media Play/Pause` |
+| Next Track | `Right Arrow`, `L`, or hardware `Media Next` |
+| Previous Track | `Left Arrow`, `J`, or hardware `Media Previous` |
+| Stop Track | `S`, or hardware `Media Stop` |
+| Volume Up / Down | `Up Arrow` / `Down Arrow` |
+| Mute / Unmute | `M` |
+| Toggle Pin | `P` |
+| Open Settings | `O` or `,` |
+| Hide Popover | `Esc` |
+
+---
+
 ## Launch at sign-in
 
 TrackDot stores a quoted executable path under:

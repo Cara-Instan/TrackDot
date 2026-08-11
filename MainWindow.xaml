@@ -3,10 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="TrackDot" Width="360" SizeToContent="Height"
         WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
-        Topmost="True" Background="Transparent"
+        Topmost="True" Background="Transparent" AllowsTransparency="True"
         Deactivated="Window_Deactivated" KeyDown="Window_KeyDown"
-        Closing="Window_Closing"
-        SourceInitialized="Window_SourceInitialized"
+        Closing="Window_Closing" MouseLeftButtonDown="Window_MouseLeftButtonDown"
         Icon="pack://application:,,,/Assets/AppIcon.ico">
     <WindowChrome.WindowChrome>
         <WindowChrome GlassFrameThickness="0"
