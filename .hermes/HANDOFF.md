@@ -1,16 +1,16 @@
 # TrackDot Implementation — Session Handoff
 
-**Date:** 2026-08-11 (Tasks 1–10 completed across sessions; current session shipped Task 10)
+**Date:** 2026-08-11 (Tasks 1–11 completed across sessions; current session shipped Task 11)
 **Session:** Resumed from plan `.hermes/plans/2026-08-09_000000-track-dot-windows-smtc-popover.md`
 **Goal:** Implement the 14-task plan to turn the empty WPF template into a Windows SMTC tray popover.
 
 Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configured in this repo).
 
-**Last verification:** `dotnet test -c Debug` and `dotnet test -c Release` → **193 / 193 passing** (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model + 6 single-instance + 8 tray-icon + 10 placement + 13 exception-logger + 24 startup). Both Debug and Release build with 0 warnings, 0 errors. Stress: full Debug + Release cycle run in the Task 10 shipping session; the next session should treat these numbers as authoritative only after re-running `dotnet test` themselves — counts drift if a test is added and the suite is not re-run.
+**Last verification:** `dotnet test -c Debug` and `dotnet test -c Release` → **227 / 227 passing** (3 smoke + 11 snapshot + 12 mapper + 12 decoder + 16 command + 15 service-guards + 14 service-generation + 10 interpolation + 26 view-model + 10 view-model-lifecycle + 10 asset-resource + 6 single-instance + 8 tray-icon + 10 placement + 13 exception-logger + 24 startup). Both Debug and Release build with 0 warnings, 0 errors. The numbers above were re-verified end-to-end during the Task 11 shipping session. **Note**: the per-class counts listed above are top-level `[Fact]`/`[Theory]` declarations. `[Theory]` cases with `[InlineData]` rows add additional test cases that bump the count beyond the literal `+N`; the authoritative total is 227.
 
 ---
 
-## Status: Tasks 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 done; Tasks 11-14 pending
+## Status: Tasks 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 done; Tasks 12-14 pending
 
 | # | Task | Status | Commit |
 |---|------|--------|--------|
@@ -26,7 +26,7 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 | 8 | Add tray icon lifecycle and toggle behavior | ✅ done | `2d5c165` |
 | 9 | Compose startup, initialization, and error handling | ✅ done | `d0e4a7c` |
 | 10 | Implement launch-at-sign-in settings | ✅ done | `2e9a881` |
-| 11 | Add automated lifecycle tests and resource checks | 🔴 not started | — |
+| 11 | Add automated lifecycle tests and resource checks | ✅ done | `9e628ff` |
 | 12 | Windows integration validation (docs only - manual) | 🔴 not started | — |
 | 13 | Document build, usage, limitations, and privacy | 🔴 not started | — |
 | 14 | Produce and verify x64 distributable | 🔴 not started | — |
