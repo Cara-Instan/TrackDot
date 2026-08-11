@@ -1,6 +1,7 @@
 ﻿<Application x:Class="TrackDot.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:tb="http://www.hardcodet.net/taskbar"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
         <SolidColorBrush x:Key="PanelBrush" Color="#202124" />
@@ -22,5 +23,14 @@
             <Setter Property="FontSize" Value="16" />
             <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
         </Style>
+        <ContextMenu x:Key="TrayContextMenu" x:Shared="False">
+            <MenuItem x:Name="OpenSettingsMenuItem" Header="Settings" />
+            <Separator />
+            <MenuItem x:Name="ExitMenuItem" Header="Exit TrackDot" />
+        </ContextMenu>
+        <tb:TaskbarIcon x:Key="TrayIcon"
+                        ToolTipText="TrackDot"
+                        ContextMenu="{StaticResource TrayContextMenu}"
+                        IconSource="pack://application:,,,/Assets/AppIcon.ico" />
     </Application.Resources>
 </Application>

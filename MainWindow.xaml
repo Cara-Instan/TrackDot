@@ -5,6 +5,7 @@
         WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
         Topmost="True" Background="Transparent" AllowsTransparency="True"
         Deactivated="Window_Deactivated" KeyDown="Window_KeyDown"
+        Closing="Window_Closing"
         SourceInitialized="Window_SourceInitialized">
     <Border Background="{StaticResource PanelBrush}" CornerRadius="12" Padding="12">
         <Grid Width="336">

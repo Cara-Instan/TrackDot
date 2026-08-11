@@ -23,6 +23,8 @@
     <Compile Include="Fakes\FakeMediaControllerService.cs" />
     <Compile Include="ProgressInterpolationTests.cs" />
     <Compile Include="MainViewModelTests.cs" />
+    <Compile Include="SingleInstanceGuardTests.cs" />
+    <Compile Include="TrayIconServiceTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
