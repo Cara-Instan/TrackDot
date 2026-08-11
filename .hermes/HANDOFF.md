@@ -6,7 +6,7 @@
 
 Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configured in this repo).
 
-**Last verification:** `dotnet test -c Debug` and `dotnet test -c Release` → 132 / 132 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model). Both Debug and Release build with 0 warnings, 0 errors. Stress: 5× Debug + 5× Release consecutive full-suite runs, zero flakes. Run on 2026-08-09 by the closing session; the next session should treat these numbers as authoritative only after re-running `dotnet test` themselves — counts drift if a test is added and the suite is not re-run.
+**Last verification:** `dotnet test -c Debug` and `dotnet test -c Release` → **146 / 146 passing** (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model + 6 single-instance + 8 tray-icon). Both Debug and Release build with 0 warnings, 0 errors. Stress: 5× Debug full-suite re-runs, zero flakes. Run on 2026-08-09 by the Task 8 closing session; the next session should treat these numbers as authoritative only after re-running `dotnet test` themselves — counts drift if a test is added and the suite is not re-run.
 
 ---
 
@@ -23,7 +23,7 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 | 5c | Re-entrancy test determinism fix (Task.Run wrapper to escape xUnit sync context) | ✅ done | `13d86b1` |
 | 6 | Build view model and progress interpolation | ✅ done | `3a5b8ec` |
 | 7 | Construct the floating popover UI | ✅ done | `db46fbb` |
-| 8 | Add tray icon lifecycle and toggle behavior | 🔴 not started | — |
+| 8 | Add tray icon lifecycle and toggle behavior | ✅ done | `2d5c165` |
 | 9 | Compose startup, initialization, and error handling | 🔴 not started | — |
 | 10 | Implement launch-at-sign-in settings | 🔴 not started | — |
 | 11 | Add automated lifecycle tests and resource checks | 🔴 not started | — |
@@ -31,7 +31,7 @@ Commit author: `Herlandro Tribiakto <herlandrotri@gmail.com>` (already configure
 | 13 | Document build, usage, limitations, and privacy | 🔴 not started | — |
 | 14 | Produce and verify x64 distributable | 🔴 not started | — |
 
-**Tasks 1–6 are shipped.** Tasks 5 (a/b/c), 2, 3, 4, 1 are unchanged from prior sessions. Task 6 added the view-model layer plus pure timeline interpolation. The next session can start Task 7 (popover UI) directly against the `MainViewModel` API.
+**Tasks 1–8 are shipped.** Tasks 1–6 are unchanged from prior sessions (handed off with full test counts). Task 7 added the floating popover UI. Task 8 added the tray-icon lifecycle (Hardcodet `TaskbarIcon`, context menu, single-instance mutex, tray-driven toggle, close-as-hide). The next session can start Task 9 (composition root / startup cleanup / global exception handlers) directly against the existing `App.OnStartup` / `App.OnExit` graph.
 
 ---
 
@@ -257,7 +257,47 @@ Plan §Task 5 step 1–4 is fully implemented. The four behaviours:
 
 ---
 
-## Next: Task 8 — Tray icon lifecycle and toggle behavior
+## Task 8 — Tray icon lifecycle and toggle behavior (shipped in commit `2d5c165`)
+
+Plan §Task 8 is fully implemented. Behaviour shipped:
+
+1. **Single-instance mutex.** `Local\TrackDot.SingleInstance.v1` (per-session namespace, versioned). `App.OnStartup` constructs `SingleInstanceGuard` first; if `!IsAcquired`, the process calls `Shutdown(1)` and returns before any UI is shown. Mutex is released in `App.OnExit`.
+2. **`TaskbarIcon` resource + tray context menu.** `App.xaml` adds `<tb:TaskbarIcon x:Key="TrayIcon">` with `ToolTipText="TrackDot"`, the `TrayContextMenu` resource (Settings / separator / Exit TrackDot), and `IconSource` pointing at the embedded `Assets/AppIcon.ico` via a `pack://application:,,,/Assets/AppIcon.ico` URI. The 32×32 ICO is a generated PNG-encoded frame (transparent rounded corners, accent dot).
+3. **`TrayIconService`** owns the popover visibility state and routes `TrayLeftMouseDown` → `TogglePopover()`. `Show/Hide/Toggle` are all idempotent (calling `Show` when already visible is a no-op). The service raises `ShutdownRequested` exactly once across multiple `RequestShutdown` calls and disposes the icon handle (which removes the tray icon from the notification area).
+4. **`MainWindow` implements `IPopoverHost`.** `ShowPopover` / `HidePopover` flip the view-model's `IsVisible` (so the 250 ms interpolation timer starts/stops) and `Show()` / `Hide()` the window. `Window_Closing` cancels the close and calls `HidePopover` *unless* `MainWindow.IsShuttingDown` is `true` — which `App.OnExit` sets before tearing anything down.
+5. **Tray menu commands wired.** Settings currently logs to debug (Task 10 owns the real `SettingsWindow`); Exit calls `_tray.RequestShutdown()` → `ShutdownRequested` → `Application.Shutdown()` → `OnExit`.
+6. **`App.OnExit` tears down in reverse-construction order** with null-safe `try/catch` swallows on every step so a half-constructed `OnStartup` (e.g. single-instance failed) does not throw on shutdown.
+
+**Files created / modified:**
+- `Services/SingleInstanceGuard.cs` — `IDisposable` named-mutex wrapper. `IsAcquired` is true iff `Mutex(name, out createdNew)` reports `createdNew`. Disposal is idempotent; the original failed-acquire path releases the handle immediately to avoid kernel-object leaks.
+- `Services/IPopoverHost.cs` — popover seam (`ShowPopover` / `HidePopover`).
+- `Services/ITrayIconHandle.cs` — tray-icon seam (`TrayLeftMouseDown` event + `IDisposable`).
+- `Services/TrayIconHandle.cs` — production handle wrapping the live `TaskbarIcon`. Subscribes/unsubscribes the `TrayLeftMouseDown` routed event so the WPF dependency stays behind the seam.
+- `Services/TrayIconService.cs` — UI-thread-owned state machine. Caches popover visibility; idempotent show/hide/toggle; raises `ShutdownRequested` once.
+- `App.xaml` — adds `TrayContextMenu` + `TrayIcon` resources, `xmlns:tb` namespace import.
+- `App.xaml.cs` — composition root (see §Task 9 handoff next section for the same code).
+- `MainWindow.xaml` — adds `Closing="Window_Closing"`.
+- `MainWindow.xaml.cs` — implements `IPopoverHost`, adds `Window_Closing` handler, `ShowPopover/HidePopover` public methods, `IsShuttingDown` static flag.
+- `Assets/AppIcon.ico` — generated 32×32 PNG-in-ICO, 166 bytes.
+- `tests/TrackDot.Tests/TrackDot.Tests.csproj` — adds `<Compile Include>` entries.
+- `tests/TrackDot.Tests/SingleInstanceGuardTests.cs` — 6 tests.
+- `tests/TrackDot.Tests/TrayIconServiceTests.cs` — 8 tests.
+
+**Build & test:** Debug + Release both build with 0 warnings, 0 errors. `dotnet test` Debug: **146 / 146 passing** (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model + 6 single-instance + 8 tray-icon). Same on Release. Stable across 5× Debug stress re-runs.
+
+**Gotchas the next session needs to know:**
+1. **`Application.MainWindow` is a name-collision trap.** When `App.OnExit` writes `MainWindow.IsShuttingDown = true`, C# resolves `MainWindow` to the `Application.MainWindow` *property* (returns a `Window` instance), then errors `'Window' does not contain a definition for 'IsShuttingDown'`. The fix is to fully qualify as `TrackDot.MainWindow.IsShuttingDown = true`. This bites anywhere code touches both the type and the instance property in the same scope — the type wins when the property isn't set, so the type path always needs qualifying from inside `App`.
+2. **`TaskbarIcon.IconSource` is `ImageSource`, not `string`.** WPF's implicit string→`ImageSource` converter accepts both filesystem paths and `pack://application:,,,/...` URIs. The csproj declares `<Resource Include="Assets\AppIcon.ico" />` which embeds the asset in `AssemblyName.g.resources` — to resolve at runtime, the XAML MUST use the pack URI form `pack://application:,,,/Assets/AppIcon.ico`. A bare `IconSource="Assets/AppIcon.ico"` only works at design time (when the current directory is the project root). The pack URI is the canonical pattern and survives `dotnet publish`.
+3. **`TrayIconService` is single-instance-only.** The service holds popover visibility state in private fields; two instances would race on the same window. The composition root must construct exactly one `TrayIconService` per process and dispose it once.
+4. **`DispatcherUiTicker` is not `IDisposable`.** `OnExit` calls `Stop()`, not `Dispose()`. The plan to make it disposable is deferred to a later cleanup pass; for now the timer's `Stop()` is the only teardown the production code needs.
+5. **`MainWindow.Window_Closing` cancels the close.** `e.Cancel = true` while `!IsShuttingDown` is correct for both the user pressing X and Alt+F4. Without this guard, the user's accidental click on X would terminate the tray process. With it, the popover hides and the tray stays alive in the notification area.
+6. **`Window_Deactivated` now hides the popover even during context-menu activations.** Task 7's gotcha #3 mentioned flipping this via an `IsContextMenuOpen` field — Task 9 can add that if real users report the context menu flashing closed. For MVP the simple hide is correct.
+7. **Async SMTC init is fire-and-forget.** `App.OnStartup` returns before `_mediaService.InitializeAsync()` completes; init failure logs to `Debug.WriteLine` and the tray remains usable. Task 9 will own the real logger and may want to surface init failures via a tray balloon / tooltip update.
+8. **Settings menu is a debug stub.** Clicking it writes to `Debug.WriteLine`. Task 10 wires the real `SettingsWindow`. Do not remove the click handler in Task 9 — it is the only evidence the menu wiring works end-to-end until Task 10 lands.
+
+---
+
+## Next: Task 9 — Compose startup, initialization, and error handling
 
 Task 7 consumes the building blocks now in place:
 
@@ -284,6 +324,8 @@ Position the popover above the notification area on the monitor containing the t
 - **`BitmapDecoder` is ambiguous in WPF projects.** Both `System.Windows.Media.Imaging.BitmapDecoder` and `Windows.Graphics.Imaging.BitmapDecoder` exist. Use a `using Xxx = Windows.Graphics.Imaging.BitmapDecoder;` alias when both namespaces are imported.
 - **WinRT runtime classes have no public `Dispose`/`Close` in the CsWinRT projection.** `BitmapDecoder`, `SoftwareBitmap`, and `Buffer` all implement `IClosable` but the projection does not surface it to C#. They are GC-managed. Don't try to call `.Dispose()` on them.
 - **`SoftwareBitmap.CopyToBuffer(Buffer)` requires `Length` set on the buffer.** A fresh `new Buffer(capacity)` has `Length == 0` and the call refuses to write.
+- **`Application.MainWindow` collides with the `MainWindow` type name.** Inside an `App` partial (`App.xaml.cs`), `MainWindow` (unqualified) resolves to the `Application.MainWindow` *instance property*, not the `TrackDot.MainWindow` *type*. `MainWindow.IsShuttingDown = true` therefore compiles as `<Window>.IsShuttingDown = true`, which fails with `'Window' does not contain a definition for 'IsShuttingDown'`. The fix is to fully qualify: `TrackDot.MainWindow.IsShuttingDown = true`. This bites anywhere the App code touches the type, the static field, or any member that shares a name with a `Window` property.
+- **`TaskbarIcon.IconSource` is `ImageSource`, resolved via the pack URI.** When the csproj embeds an asset via `<Resource Include="Assets\AppIcon.ico" />`, the asset lives in `AssemblyName.g.resources` under the path `Assets/AppIcon.ico`. WPF's string→`ImageSource` converter accepts both filesystem paths and `pack://application:,,,/Assets/AppIcon.ico` URIs, but only the pack URI resolves correctly at runtime once the working directory is `bin/.../`. Bare `IconSource="Assets/AppIcon.ico"` works at design time only. Use the pack URI in XAML.
 
 ---
 
@@ -316,7 +358,12 @@ TrackDot/
 │   ├── MediaControllerService.cs
 │   ├── MediaPropertyMapper.cs
 │   ├── ProgressInterpolator.cs
-│   └── ThumbnailDecoder.cs
+│   ├── ThumbnailDecoder.cs
+│   ├── SingleInstanceGuard.cs
+│   ├── IPopoverHost.cs
+│   ├── ITrayIconHandle.cs
+│   ├── TrayIconHandle.cs
+│   └── TrayIconService.cs
 ├── ViewModels/
 │   ├── DispatcherUiTicker.cs
 │   ├── IUiTicker.cs
@@ -333,8 +380,10 @@ TrackDot/
     ├── MediaPropertyMapperTests.cs
     ├── MediaSessionSnapshotTests.cs
     ├── ProgressInterpolationTests.cs
+    ├── SingleInstanceGuardTests.cs
     ├── SmokeTests.cs
     ├── ThumbnailDecoderTests.cs
+    ├── TrayIconServiceTests.cs
     └── TrackDot.Tests.csproj
 ```
 
@@ -342,11 +391,10 @@ Need to be created (planned, do not yet exist):
 - `Models/` complete (no more needed)
 - `ViewModels/SettingsViewModel.cs` (Task 10)
 - `tests/TrackDot.Tests/ServiceGenerationTests.cs`, `ViewModelLifecycleTests.cs` (Task 11)
-- `Services/WindowPlacementService.cs` (Task 7)
-- `Services/ITrayIconService.cs`, `TrayIconService.cs` (Task 8)
+- `Services/WindowPlacementService.cs` (Task 9 — was deferred from Task 7)
 - `Services/IStartupService.cs`, `StartupService.cs` (Task 10)
 - `SettingsWindow.xaml` + `.cs` (Task 10)
-- `Assets/AppIcon.ico`, `Assets/PlaceholderArt.png` (Tasks 4, 7)
+- `Assets/PlaceholderArt.png` (Tasks 4 / 11)
 
 ---
 
@@ -360,7 +408,7 @@ dotnet test TrackDot.sln -c Debug --no-build
 dotnet build TrackDot.sln -c Release
 ```
 
-Current `dotnet test` status: 79 / 79 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards). Stable across Debug and Release (29× Debug + 10× Release stress runs in this session, zero flakes after the 5c fix).
+Current `dotnet test` status: 146 / 146 passing (3 smoke + 13 snapshot + 20 mapper + 12 decoder + 16 command + 15 service-guards + 10 interpolation + 43 view-model + 6 single-instance + 8 tray-icon). Stable across Debug and Release (5× Debug stress runs in this session, zero flakes).
 Current `dotnet build` status: Debug and Release both build with 0 warnings, 0 errors.
 
 ---
