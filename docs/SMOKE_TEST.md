@@ -158,6 +158,29 @@ If the timer fails to stop, the popover's `ShowPopover` / `HidePopover` toggle o
 
 ---
 
+### 3.13 Multi-Session Picker (Feature 9)
+
+| Step | Expected |
+|---|---|
+| Play media in Spotify and Chrome simultaneously | Session picker row (`SWITCH SOURCE`) appears in popover showing pill buttons for Spotify and Google Chrome |
+| Currently active source pill | Styled with accent background and dark text (`IsCurrent = true`) |
+| Click non-active source pill | Popover snaps metadata, artwork, and transport state to selected player |
+| Close one of the source apps | Session picker updates; when only 1 source remains, the session picker row collapses automatically |
+
+---
+
+### 3.14 Volume / Mute Controls (Feature 10)
+
+| Step | Expected |
+|---|---|
+| Active media playing | Volume control row appears below transport controls with speaker icon, volume slider, and percentage text |
+| Drag volume slider | Source application's CoreAudio volume level updates in sync; percentage label updates (0%–100%) |
+| Click speaker button | CoreAudio session mutes/unmutes; icon switches between speaker and speaker-with-x glyph |
+| No active media session | Volume row collapses automatically |
+
+
+---
+
 ## 4. Resource baseline (record during each run)
 
 ```
