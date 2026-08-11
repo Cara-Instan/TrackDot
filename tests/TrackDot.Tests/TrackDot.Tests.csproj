@@ -25,6 +25,8 @@
     <Compile Include="MainViewModelTests.cs" />
     <Compile Include="SingleInstanceGuardTests.cs" />
     <Compile Include="TrayIconServiceTests.cs" />
+    <Compile Include="WindowPlacementTests.cs" />
+    <Compile Include="UnhandledExceptionLoggerTests.cs" />
   </ItemGroup>
 
   <ItemGroup>

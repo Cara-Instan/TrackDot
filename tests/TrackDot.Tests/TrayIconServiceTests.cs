@@ -170,6 +170,8 @@ public sealed class TrayIconServiceTests
     {
         private EventHandler? _leftClick;
         public int DisposeCount { get; private set; }
+        public string? LastToolTip { get; private set; }
+        public int SetToolTipCount { get; private set; }
 
         public event EventHandler? TrayLeftMouseDown
         {
@@ -178,6 +180,12 @@ public sealed class TrayIconServiceTests
         }
 
         public void RaiseLeftClick() => _leftClick?.Invoke(this, EventArgs.Empty);
+
+        public void SetToolTipText(string? text)
+        {
+            LastToolTip = text;
+            SetToolTipCount++;
+        }
 
         public void Dispose() => DisposeCount++;
     }
