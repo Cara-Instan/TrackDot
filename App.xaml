@@ -468,6 +468,6 @@
         <tb:TaskbarIcon x:Key="TrayIcon"
                         ToolTipText="TrackDot"
                         ContextMenu="{StaticResource TrayContextMenu}"
-                        IconSource="pack://application:,,,/Assets/AppIcon.ico" />
+                        IconSource="pack://application:,,,/TrackDot;component/Assets/AppIcon.ico" />
     </Application.Resources>
 </Application>

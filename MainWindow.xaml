@@ -6,7 +6,7 @@
         Topmost="True" Background="Transparent" AllowsTransparency="True"
         Deactivated="Window_Deactivated" KeyDown="Window_KeyDown"
         Closing="Window_Closing" MouseLeftButtonDown="Window_MouseLeftButtonDown"
-        Icon="pack://application:,,,/Assets/AppIcon.ico">
+        Icon="pack://application:,,,/TrackDot;component/Assets/AppIcon.ico">
     <WindowChrome.WindowChrome>
         <WindowChrome GlassFrameThickness="0"
                       ResizeBorderThickness="0"
@@ -47,7 +47,7 @@
                             <Image.Source>
                                 <Binding Path="Artwork">
                                     <Binding.FallbackValue>
-                                        <BitmapImage UriSource="pack://application:,,,/Assets/PlaceholderArt.png" />
+                                        <BitmapImage UriSource="pack://application:,,,/TrackDot;component/Assets/PlaceholderArt.png" />
                                     </Binding.FallbackValue>
                                 </Binding>
                             </Image.Source>

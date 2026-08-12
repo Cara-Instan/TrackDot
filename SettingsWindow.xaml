@@ -9,7 +9,7 @@
         Foreground="{DynamicResource TextBrush}"
         Closing="Window_Closing"
         KeyDown="Window_KeyDown"
-        Icon="pack://application:,,,/Assets/AppIcon.ico">
+        Icon="pack://application:,,,/TrackDot;component/Assets/AppIcon.ico">
     <Window.Resources>
         <Style x:Key="StatusRowStyle" TargetType="TextBlock">
             <Setter Property="Visibility" Value="Visible" />
