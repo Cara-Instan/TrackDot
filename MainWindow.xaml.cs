@@ -71,6 +71,9 @@ public partial class MainWindow : Window, IPopoverHost
     /// Shows the popover, positions it above the system tray on
     /// the taskbar monitor, and tells the view-model it's
     /// visible (so the timer starts). Calling twice is a no-op.
+    /// On a fresh show the window is also raised to the foreground
+    /// and Topmost is re-asserted so a window that had focus before
+    /// the tray click is reliably pushed below the popover.
     /// </summary>
     public void ShowPopover()
     {
@@ -83,6 +86,15 @@ public partial class MainWindow : Window, IPopoverHost
             // Window and is known by the time Show() returns.
             ApplyPlacement();
             Show();
+            // After a Show()-from-hidden, Windows does not always
+            // raise the window above fullscreen/Snapped apps or
+            // apps that were already in the foreground. Activate
+            // pushes it to the foreground; the false→true toggle
+            // on Topmost defeats any Z-order caching the shell
+            // did while the window was hidden.
+            Activate();
+            if (IsPinned) Topmost = true;   // pinned: stay topmost
+            else { Topmost = false; Topmost = true; }
         }
         if (_viewModel is not null && !_viewModel.IsVisible)
         {
