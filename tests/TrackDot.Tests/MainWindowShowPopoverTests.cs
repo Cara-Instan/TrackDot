@@ -105,6 +105,57 @@ public sealed class MainWindowShowPopoverTests
         if (exception != null) throw exception;
     }
 
+    [Fact]
+    public void After_external_hide_next_show_raises_window()
+    {
+        // Integration version of TrayIconServiceTests.
+        // Tray_click_after_external_hide_shows_on_first_click, but
+        // driven against the real MainWindow STA-hosted, no
+        // FakePopoverHost and no service layer.
+        Exception? exception = null;
+
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                EnsureApplication();
+                var window = new MainWindow();
+                RunOnDispatcher(window.ShowPopover);
+                PumpDispatcher();
+                Assert.True(window.IsVisible);
+
+                // Simulate the Window_Deactivated side-channel:
+                // the window is hidden by code that doesn't go
+                // through the tray service.
+                RunOnDispatcher(window.HidePopover);
+                PumpDispatcher();
+                Assert.False(window.IsVisible);
+
+                // Tray-click equivalent: a single ShowPopover call.
+                // The user-visible contract is "one click brings
+                // it back, topmost".
+                RunOnDispatcher(window.ShowPopover);
+                PumpDispatcher();
+                Assert.True(window.IsVisible, "expected IsVisible after single show call");
+                Assert.True(window.Topmost, "expected Topmost=true after single show call");
+            }
+            catch (Exception ex)
+            {
+                exception = ex;
+            }
+            finally
+            {
+                Dispatcher.CurrentDispatcher.InvokeShutdown();
+            }
+        });
+
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        if (exception != null) throw exception;
+    }
+
     private static void EnsureApplication()
     {
         // ResourceAssembly must be set BEFORE the Application is
