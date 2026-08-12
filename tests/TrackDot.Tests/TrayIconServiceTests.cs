@@ -171,6 +171,8 @@ public sealed class TrayIconServiceTests
         public int TotalCalls => ShowCount + HideCount + ToggleCount;
         public bool IsShown => _isShown;
 
+        public bool IsPopoverVisible => _isShown;
+
         public void ShowPopover()
         {
             ShowCount++;

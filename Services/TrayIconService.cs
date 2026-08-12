@@ -9,12 +9,13 @@ namespace TrackDot.Services;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The service keeps a small piece of UI state (whether the
-/// popover is currently visible) and routes every state change
-/// through <see cref="IPopoverHost"/>. <see cref="ShowPopover"/>,
-/// <see cref="HidePopover"/>, and <see cref="TogglePopover"/> are
-/// all idempotent — calling <c>ShowPopover</c> when the popover
-/// is already visible is a no-op, etc.
+/// Visibility state is delegated to the <see cref="IPopoverHost"/>.
+/// The service MUST NOT cache a separate "is shown" flag: the
+/// popover can be hidden by non-tray paths
+/// (<c>Window.Deactivated</c>, the user pressing Escape, the OS
+/// closing it), and a stale cache causes tray clicks to branch
+/// the wrong way and silently no-op ("I have to click the tray
+/// icon twice to see the popover").
 /// </para>
 /// <para>
 /// <see cref="RequestShutdown"/> raises <see cref="ShutdownRequested"/>
@@ -27,7 +28,6 @@ public sealed class TrayIconService : IDisposable
 {
     private readonly ITrayIconHandle _icon;
     private readonly IPopoverHost _popover;
-    private bool _isPopoverVisible;
     private bool _disposed;
     private bool _shutdownRequested;
 
@@ -38,8 +38,13 @@ public sealed class TrayIconService : IDisposable
     /// </summary>
     public event EventHandler? ShutdownRequested;
 
-    /// <summary>True if the popover is currently visible.</summary>
-    public bool IsPopoverVisible => _isPopoverVisible;
+    /// <summary>
+    /// True if the popover is currently visible. Reads through to
+    /// <see cref="IPopoverHost.IsPopoverVisible"/> so it cannot
+    /// disagree with the popover's actual visibility.
+    /// </summary>
+    public bool IsPopoverVisible =>
+        !_disposed && _popover.IsPopoverVisible;
 
     /// <summary>
     /// Creates the tray service. The handle is wired to forward
@@ -59,24 +64,26 @@ public sealed class TrayIconService : IDisposable
     /// <summary>Show the popover. No-op if already visible.</summary>
     public void ShowPopover()
     {
-        if (_disposed || _isPopoverVisible) return;
-        _isPopoverVisible = true;
+        if (_disposed || _popover.IsPopoverVisible) return;
         _popover.ShowPopover();
     }
 
     /// <summary>Hide the popover. No-op if already hidden.</summary>
     public void HidePopover()
     {
-        if (_disposed || !_isPopoverVisible) return;
-        _isPopoverVisible = false;
+        if (_disposed || !_popover.IsPopoverVisible) return;
         _popover.HidePopover();
     }
 
-    /// <summary>Toggle the popover's visibility.</summary>
+    /// <summary>
+    /// Toggle the popover's visibility. Decision is based on the
+    /// host's actual visibility, so non-tray hides (Deactivated,
+    /// Escape, OS close) cannot desync this from the popover.
+    /// </summary>
     public void TogglePopover()
     {
         if (_disposed) return;
-        if (_isPopoverVisible) HidePopover();
+        if (_popover.IsPopoverVisible) HidePopover();
         else ShowPopover();
     }
 
