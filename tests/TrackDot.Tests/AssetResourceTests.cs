@@ -249,10 +249,17 @@ public sealed class AssetResourceTests
         // accepts filesystem paths AND pack:// URIs. A bare
         // "Assets/AppIcon.ico" works in design-time but breaks
         // at runtime (the working directory is bin/.../, not the
-        // project root). The canonical pattern is the pack URI.
+        // project root).
+        //
+        // The pack URI must be fully-qualified with an explicit
+        // assembly name when XAML is loaded from a non-entry
+        // assembly (e.g. the TrackDot.Tests host): the relative
+        // "pack://application:,,,/Assets/AppIcon.ico" form resolves
+        // relative to the entry assembly and fails when the test
+        // host is TrackDot.Tests.
         var appXaml = File.ReadAllText(Path.Combine(RepositoryRoot, "App.xaml"));
 
-        Assert.Contains("pack://application:,,,/Assets/AppIcon.ico", appXaml);
+        Assert.Contains("pack://application:,,,/TrackDot;component/Assets/AppIcon.ico", appXaml);
     }
 
     [Fact]

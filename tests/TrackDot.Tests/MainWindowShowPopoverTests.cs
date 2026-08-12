@@ -23,6 +23,7 @@ namespace TrackDot.Tests;
 /// with <c>NullReferenceException</c> inside
 /// <c>HwndSubclass.SubclassWndProc</c>.
 /// </remarks>
+[Collection("WPF")]
 public sealed class MainWindowShowPopoverTests
 {
     private static readonly TimeSpan PumpTimeout = TimeSpan.FromMilliseconds(200);
@@ -157,30 +158,36 @@ public sealed class MainWindowShowPopoverTests
     }
 
     private static void EnsureApplication()
-    {
-        // ResourceAssembly must be set BEFORE the Application is
-        // created so that App.xaml's LoadComponent call (which uses
-        // a relative "/TrackDot;component/app.xaml" URI) resolves to
-        // the production assembly.
-        if (System.Windows.Application.ResourceAssembly == null)
         {
-            System.Windows.Application.ResourceAssembly =
-                typeof(MainWindow).Assembly;
-        }
-        if (System.Windows.Application.Current == null)
-        {
-            // Use App (not a barebones Application) so that App.xaml's
-            // <Application.Resources> are loaded — MainWindow.xaml
+            // ResourceAssembly must be set BEFORE the Application is
+            // created so that App.xaml's LoadComponent call (which uses
+            // a relative "/TrackDot;component/app.xaml" URI) resolves to
+            // the production assembly.
+            if (System.Windows.Application.ResourceAssembly == null)
+            {
+                System.Windows.Application.ResourceAssembly =
+                    typeof(MainWindow).Assembly;
+            }
+            // App.xaml's <Application.Resources> are loaded only when
+            // an App instance is constructed and InitializeComponent is
+            // called explicitly (production does this from App.Main;
+            // App.xaml.cs's own ctor does NOT chain it). MainWindow.xaml
             // references those resources (brushes, the
-            // HeaderActionButton style) and fails to parse without
-            // them. The generated App.Main calls
-            // InitializeComponent explicitly after `new App()`; the
-            // test path must do the same because App.xaml.cs doesn't
-            // chain it from its own ctor.
-            var app = new App();
-            app.InitializeComponent();
+            // HeaderActionButton style) and fails to parse without them.
+            //
+            // WPF refuses to create more than one Application instance
+            // per AppDomain, and the assembly-level
+            // [assembly: CollectionBehavior(DisableTestParallelization = true)]
+            // in WpfTestAssemblyInit.cs ensures this is the only path
+            // that creates it. (AboutWindowTests would otherwise
+            // construct a barebones Application and lock the singleton
+            // before we get a chance to install App.xaml's resources.)
+            if (System.Windows.Application.Current is not App)
+            {
+                var app = new App();
+                app.InitializeComponent();
+            }
         }
-    }
 
     private static void RunOnDispatcher(Action action)
     {

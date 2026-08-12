@@ -4,6 +4,7 @@ using Xunit;
 
 namespace TrackDot.Tests;
 
+[Collection("WPF")]
 public class AboutWindowTests
 {
     [Fact]
@@ -15,13 +16,21 @@ public class AboutWindowTests
         {
             try
             {
-                if (System.Windows.Application.Current == null)
-                {
-                    _ = new System.Windows.Application();
-                }
+                // WPF refuses to create a second Application in the
+                // same AppDomain. MainWindowShowPopoverTests needs the
+                // App class (not a barebones Application) so App.xaml's
+                // <Application.Resources> register MainWindow.xaml's
+                // resource lookups. Use App here too so the singleton
+                // is whichever class runs first - either way it is App
+                // and both test classes see it.
                 if (System.Windows.Application.ResourceAssembly == null)
                 {
                     System.Windows.Application.ResourceAssembly = typeof(TrackDot.AboutWindow).Assembly;
+                }
+                if (System.Windows.Application.Current is not TrackDot.App)
+                {
+                    var app = new TrackDot.App();
+                    app.InitializeComponent();
                 }
                 var window = new AboutWindow();
                 Assert.NotNull(window);
