@@ -132,6 +132,29 @@ public sealed class TrayIconServiceTests
         Assert.False(host.IsShown);
     }
 
+    [Fact]
+    public void Tray_click_after_external_hide_shows_on_first_click()
+    {
+        var host = new FakePopoverHost();
+        var handle = new TestIconHandle();
+        using var service = new TrayIconService(handle, host);
+
+        // User opens the popover via tray click.
+        handle.RaiseLeftClick();
+        Assert.True(host.IsShown);
+
+        // The popover is then hidden by a non-tray path
+        // (e.g. Window_Deactivated when the user clicked
+        // another window), without going through the service.
+        host.HideSilently();
+
+        // Pre-fix: this click is routed to HidePopover and is
+        // a no-op because the service still believes the popover
+        // is shown. The user has to click twice.
+        handle.RaiseLeftClick();
+        Assert.True(host.IsShown);
+    }
+
     // --- helpers ---------------------------------------------------------
 
     /// <summary>
@@ -158,6 +181,15 @@ public sealed class TrayIconServiceTests
         {
             HideCount++;
             _isShown = false;
+        }
+
+        /// <summary>Simulates a non-tray hide (e.g. main window's
+        /// Deactivated handler) that the service does not see.</summary>
+        public void HideSilently()
+        {
+            _isShown = false;
+            // Do NOT increment HideCount: the service did not drive this
+            // hide, so the service's view of "is shown" was not updated.
         }
     }
 
