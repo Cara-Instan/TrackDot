@@ -1,19 +1,25 @@
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Navigation;
 using TrackDot.Services;
 
-namespace TrackDot;
+namespace TrackDot.Views;
 
 /// <summary>
-/// The Keyboard Shortcuts reference window displaying hotkeys and media keys.
-/// Follows the single-instance window lifecycle pattern.
+/// The About window displaying application details, repository links, author details,
+/// and AI benchmark notes. Follows the single-instance window lifecycle pattern.
 /// </summary>
-public partial class HotkeysWindow : Window
+public partial class AboutWindow : Window
 {
+    private const string DefaultRepoUrl = "https://github.com/Cara-Instan/TrackDot";
+    private const string DefaultAuthorUrl = "https://github.com/herlandroando";
+
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 = 19;
 
@@ -25,10 +31,40 @@ public partial class HotkeysWindow : Window
 
     public void BeginShutdown() => _isShuttingDown = true;
 
-    public HotkeysWindow()
+    public AboutWindow()
     {
         InitializeComponent();
         SourceInitialized += Window_SourceInitialized;
+        SetVersionText();
+    }
+
+    private void SetVersionText()
+    {
+        try
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var infoVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            if (!string.IsNullOrEmpty(infoVersion))
+            {
+                VersionTextBlock.Text = infoVersion.StartsWith("v", StringComparison.OrdinalIgnoreCase)
+                    ? infoVersion
+                    : $"v{infoVersion}";
+                return;
+            }
+
+            var version = assembly.GetName().Version;
+            if (version != null)
+            {
+                VersionTextBlock.Text = $"v{version.Major}.{version.Minor}.{version.Build}";
+                return;
+            }
+        }
+        catch
+        {
+            // Fallback default
+        }
+
+        VersionTextBlock.Text = "v0.1.0-beta";
     }
 
     public void SetThemeService(IThemeService? themeService)
@@ -46,7 +82,7 @@ public partial class HotkeysWindow : Window
         }
     }
 
-    public void ShowHotkeys()
+    public void ShowAbout()
     {
         if (!IsVisible)
         {
@@ -120,5 +156,37 @@ public partial class HotkeysWindow : Window
     private void OnCloseClicked(object sender, RoutedEventArgs e)
     {
         Hide();
+    }
+
+    private void OnOpenRepoClicked(object sender, RoutedEventArgs e)
+    {
+        OpenUrl(DefaultRepoUrl);
+    }
+
+    private void OnOpenAuthorClicked(object sender, RoutedEventArgs e)
+    {
+        OpenUrl(DefaultAuthorUrl);
+    }
+
+    private void Hyperlink_RequestNavigate(object sender, RequestNavigateEventArgs e)
+    {
+        OpenUrl(e.Uri.AbsoluteUri);
+        e.Handled = true;
+    }
+
+    private static void OpenUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // Swallow if default browser failed to launch
+        }
     }
 }

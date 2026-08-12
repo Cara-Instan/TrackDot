@@ -4,6 +4,7 @@ using System.Windows;
 using Hardcodet.Wpf.TaskbarNotification;
 using TrackDot.Services;
 using TrackDot.ViewModels;
+using TrackDot.Views;
 
 namespace TrackDot;
 

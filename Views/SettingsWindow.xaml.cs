@@ -1,74 +1,57 @@
 using System;
 using System.ComponentModel;
-using System.Diagnostics;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
-using System.Windows.Navigation;
 using TrackDot.Services;
+using TrackDot.ViewModels;
 
-namespace TrackDot;
+namespace TrackDot.Views;
 
 /// <summary>
-/// The About window displaying application details, repository links, author details,
-/// and AI benchmark notes. Follows the single-instance window lifecycle pattern.
+/// The settings window. A normal top-level WPF window (not a
+/// popover) so the user can move, resize, and dismiss it
+/// independently of the popover. Closing the window is
+/// intercepted and turned into a <see cref="Hide"/> while the
+/// application is still running.
 /// </summary>
-public partial class AboutWindow : Window
+public partial class SettingsWindow : Window
 {
-    private const string DefaultRepoUrl = "https://github.com/Cara-Instan/TrackDot";
-    private const string DefaultAuthorUrl = "https://github.com/herlandroando";
-
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 = 19;
 
     [DllImport("dwmapi.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
     private static extern void DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int pvAttribute, int cbAttribute);
 
+    /// <summary>
+    /// Signals that the application is shutting down.
+    /// Call <see cref="BeginShutdown"/> from the composition root
+    /// instead of setting a static property.
+    /// </summary>
     private bool _isShuttingDown;
-    private IThemeService? _themeService;
 
+    /// <summary>Called by the composition root before closing the window.</summary>
     public void BeginShutdown() => _isShuttingDown = true;
 
-    public AboutWindow()
+    private SettingsViewModel? _viewModel;
+    private IThemeService? _themeService;
+
+    public SettingsWindow()
     {
         InitializeComponent();
         SourceInitialized += Window_SourceInitialized;
-        SetVersionText();
     }
 
-    private void SetVersionText()
+    /// <summary>
+    /// Wires the window to its view-model and theme service.
+    /// </summary>
+    public void SetViewModel(SettingsViewModel viewModel, IThemeService? themeService = null)
     {
-        try
-        {
-            var assembly = Assembly.GetExecutingAssembly();
-            var infoVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-            if (!string.IsNullOrEmpty(infoVersion))
-            {
-                VersionTextBlock.Text = infoVersion.StartsWith("v", StringComparison.OrdinalIgnoreCase)
-                    ? infoVersion
-                    : $"v{infoVersion}";
-                return;
-            }
+        ArgumentNullException.ThrowIfNull(viewModel);
+        DataContext = viewModel;
+        _viewModel = viewModel;
 
-            var version = assembly.GetName().Version;
-            if (version != null)
-            {
-                VersionTextBlock.Text = $"v{version.Major}.{version.Minor}.{version.Build}";
-                return;
-            }
-        }
-        catch
-        {
-            // Fallback default
-        }
-
-        VersionTextBlock.Text = "v0.1.0-beta";
-    }
-
-    public void SetThemeService(IThemeService? themeService)
-    {
         if (_themeService != null)
         {
             _themeService.EffectiveThemeChanged -= OnEffectiveThemeChanged;
@@ -82,7 +65,7 @@ public partial class AboutWindow : Window
         }
     }
 
-    public void ShowAbout()
+    public void ShowSettings()
     {
         if (!IsVisible)
         {
@@ -156,37 +139,5 @@ public partial class AboutWindow : Window
     private void OnCloseClicked(object sender, RoutedEventArgs e)
     {
         Hide();
-    }
-
-    private void OnOpenRepoClicked(object sender, RoutedEventArgs e)
-    {
-        OpenUrl(DefaultRepoUrl);
-    }
-
-    private void OnOpenAuthorClicked(object sender, RoutedEventArgs e)
-    {
-        OpenUrl(DefaultAuthorUrl);
-    }
-
-    private void Hyperlink_RequestNavigate(object sender, RequestNavigateEventArgs e)
-    {
-        OpenUrl(e.Uri.AbsoluteUri);
-        e.Handled = true;
-    }
-
-    private static void OpenUrl(string url)
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = url,
-                UseShellExecute = true
-            });
-        }
-        catch
-        {
-            // Swallow if default browser failed to launch
-        }
     }
 }

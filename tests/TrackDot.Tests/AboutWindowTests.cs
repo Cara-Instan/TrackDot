@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using TrackDot.Views;
 using Xunit;
 
 namespace TrackDot.Tests;
@@ -25,7 +26,7 @@ public class AboutWindowTests
                 // and both test classes see it.
                 if (System.Windows.Application.ResourceAssembly == null)
                 {
-                    System.Windows.Application.ResourceAssembly = typeof(TrackDot.AboutWindow).Assembly;
+                    System.Windows.Application.ResourceAssembly = typeof(TrackDot.Views.AboutWindow).Assembly;
                 }
                 if (System.Windows.Application.Current is not TrackDot.App)
                 {

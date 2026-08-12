@@ -5,18 +5,14 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using TrackDot.Services;
-using TrackDot.ViewModels;
 
-namespace TrackDot;
+namespace TrackDot.Views;
 
 /// <summary>
-/// The settings window. A normal top-level WPF window (not a
-/// popover) so the user can move, resize, and dismiss it
-/// independently of the popover. Closing the window is
-/// intercepted and turned into a <see cref="Hide"/> while the
-/// application is still running.
+/// The Keyboard Shortcuts reference window displaying hotkeys and media keys.
+/// Follows the single-instance window lifecycle pattern.
 /// </summary>
-public partial class SettingsWindow : Window
+public partial class HotkeysWindow : Window
 {
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 = 19;
@@ -24,34 +20,19 @@ public partial class SettingsWindow : Window
     [DllImport("dwmapi.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
     private static extern void DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int pvAttribute, int cbAttribute);
 
-    /// <summary>
-    /// Signals that the application is shutting down.
-    /// Call <see cref="BeginShutdown"/> from the composition root
-    /// instead of setting a static property.
-    /// </summary>
     private bool _isShuttingDown;
-
-    /// <summary>Called by the composition root before closing the window.</summary>
-    public void BeginShutdown() => _isShuttingDown = true;
-
-    private SettingsViewModel? _viewModel;
     private IThemeService? _themeService;
 
-    public SettingsWindow()
+    public void BeginShutdown() => _isShuttingDown = true;
+
+    public HotkeysWindow()
     {
         InitializeComponent();
         SourceInitialized += Window_SourceInitialized;
     }
 
-    /// <summary>
-    /// Wires the window to its view-model and theme service.
-    /// </summary>
-    public void SetViewModel(SettingsViewModel viewModel, IThemeService? themeService = null)
+    public void SetThemeService(IThemeService? themeService)
     {
-        ArgumentNullException.ThrowIfNull(viewModel);
-        DataContext = viewModel;
-        _viewModel = viewModel;
-
         if (_themeService != null)
         {
             _themeService.EffectiveThemeChanged -= OnEffectiveThemeChanged;
@@ -65,7 +46,7 @@ public partial class SettingsWindow : Window
         }
     }
 
-    public void ShowSettings()
+    public void ShowHotkeys()
     {
         if (!IsVisible)
         {

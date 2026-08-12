@@ -5,7 +5,7 @@ using System.Windows.Input;
 using TrackDot.Services;
 using TrackDot.ViewModels;
 
-namespace TrackDot;
+namespace TrackDot.Views;
 
 /// <summary>
 /// The floating popover. Owns no data; binds to a

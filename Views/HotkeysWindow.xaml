@@ -1,4 +1,4 @@
-<Window x:Class="TrackDot.HotkeysWindow"
+<Window x:Class="TrackDot.Views.HotkeysWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Keyboard Shortcuts" Width="440" SizeToContent="Height"

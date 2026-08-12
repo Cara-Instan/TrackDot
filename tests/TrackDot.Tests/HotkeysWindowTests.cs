@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using TrackDot.Views;
 using Xunit;
 
 namespace TrackDot.Tests;
@@ -18,7 +19,7 @@ public class HotkeysWindowTests
             {
                 if (System.Windows.Application.ResourceAssembly == null)
                 {
-                    System.Windows.Application.ResourceAssembly = typeof(TrackDot.HotkeysWindow).Assembly;
+                    System.Windows.Application.ResourceAssembly = typeof(TrackDot.Views.HotkeysWindow).Assembly;
                 }
 
                 var window = new HotkeysWindow();
