@@ -1,5 +1,7 @@
 using System;
 using System.Threading;
+using System.Windows;
+using System.Windows.Threading;
 using Xunit;
 
 namespace TrackDot.Tests;
@@ -11,8 +13,20 @@ namespace TrackDot.Tests;
 /// the <c>TrayIconServiceTests.Tray_click_after_external_hide_shows_on_first_click</c>
 /// regression).
 /// </summary>
+/// <remarks>
+/// Each test runs on a dedicated STA thread that hosts its own
+/// <see cref="Dispatcher"/>. After <c>ShowPopover</c> returns we
+/// pump the dispatcher briefly so the Win32 subclass callbacks
+/// that <see cref="Window.Activate"/> schedules have a chance to
+/// land before the STA thread exits — otherwise the callback
+/// races with the dispatcher's teardown and the test host crashes
+/// with <c>NullReferenceException</c> inside
+/// <c>HwndSubclass.SubclassWndProc</c>.
+/// </remarks>
 public sealed class MainWindowShowPopoverTests
 {
+    private static readonly TimeSpan PumpTimeout = TimeSpan.FromMilliseconds(200);
+
     [Fact]
     public void ShowPopover_makes_window_visible_and_topmost()
     {
@@ -24,13 +38,20 @@ public sealed class MainWindowShowPopoverTests
             {
                 EnsureApplication();
                 var window = new MainWindow();
-                window.ShowPopover();
+                RunOnDispatcher(window.ShowPopover);
+                PumpDispatcher();
                 Assert.True(window.IsVisible, "expected IsVisible after ShowPopover");
                 Assert.True(window.Topmost, "expected Topmost=true after ShowPopover");
             }
             catch (Exception ex)
             {
                 exception = ex;
+            }
+            finally
+            {
+                // Shut the dispatcher down cleanly so any queued
+                // callbacks bail out before the STA thread exits.
+                Dispatcher.CurrentDispatcher.InvokeShutdown();
             }
         });
 
@@ -58,15 +79,22 @@ public sealed class MainWindowShowPopoverTests
                 // Call twice: the second call should still drive the
                 // topmost re-assert, since the public contract is
                 // "every show must raise".
-                window.ShowPopover();
-                window.HidePopover();
-                window.ShowPopover();
+                RunOnDispatcher(window.ShowPopover);
+                PumpDispatcher();
+                RunOnDispatcher(window.HidePopover);
+                PumpDispatcher();
+                RunOnDispatcher(window.ShowPopover);
+                PumpDispatcher();
                 Assert.True(window.IsVisible);
                 Assert.True(window.Topmost);
             }
             catch (Exception ex)
             {
                 exception = ex;
+            }
+            finally
+            {
+                Dispatcher.CurrentDispatcher.InvokeShutdown();
             }
         });
 
@@ -101,5 +129,41 @@ public sealed class MainWindowShowPopoverTests
             var app = new App();
             app.InitializeComponent();
         }
+    }
+
+    private static void RunOnDispatcher(Action action)
+    {
+        var dispatcher = Dispatcher.CurrentDispatcher;
+        if (dispatcher.CheckAccess())
+        {
+            action();
+        }
+        else
+        {
+            dispatcher.Invoke(action);
+        }
+    }
+
+    private static void PumpDispatcher()
+    {
+        // Process whatever the dispatcher has queued so far (most
+        // importantly the WM_ACTIVATEAPP subclass callback that
+        // Window.Activate schedules). Without this the queued
+        // callback fires after the STA thread has begun teardown
+        // and crashes the test host.
+        var frame = new DispatcherFrame();
+        var until = DateTime.UtcNow + PumpTimeout;
+        Dispatcher.CurrentDispatcher.BeginInvoke(
+            DispatcherPriority.Background,
+            new Action(() =>
+            {
+                while (frame.Continue && DateTime.UtcNow < until)
+                {
+                    // Yield to other queued callbacks once, then
+                    // break out of the frame.
+                }
+                frame.Continue = false;
+            }));
+        Dispatcher.PushFrame(frame);
     }
 }
