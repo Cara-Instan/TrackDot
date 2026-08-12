@@ -65,6 +65,7 @@ public partial class MainWindow : Window, IPopoverHost
 
     /// <summary>Hides the popover. Idempotent.</summary>
     void IPopoverHost.HidePopover() => HidePopover();
+    bool IPopoverHost.IsPopoverVisible => IsVisible;
 
     /// <summary>
     /// Shows the popover, positions it above the system tray on
