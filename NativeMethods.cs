@@ -42,4 +42,37 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+    /// <summary>
+    /// Sets the value of a Desktop Window Manager (DWM) non-client attribute
+    /// for a window. Used here for <c>DWMWA_WINDOW_CORNER_PREFERENCE</c> to
+    /// request rounded OS-frame corners on Windows 11 22H2+.
+    /// </summary>
+    [DllImport("dwmapi.dll", PreserveSig = true)]
+    internal static extern int DwmSetWindowAttribute(
+        IntPtr hwnd,
+        int attribute,
+        ref int pvAttribute,
+        int cbAttribute);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct OSVERSIONINFOEXW
+    {
+        public int dwOSVersionInfoSize;
+        public int dwMajorVersion;
+        public int dwMinorVersion;
+        public int dwBuildNumber;
+        public int dwPlatformId;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string szCSDVersion;
+        public ushort wServicePackMajor;
+        public ushort wServicePackMinor;
+        public ushort wSuiteMask;
+        public byte wProductType;
+        public byte wReserved;
+    }
+
+    [DllImport("ntdll.dll", PreserveSig = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool RtlGetVersion(ref OSVERSIONINFOEXW versionInfo);
 }

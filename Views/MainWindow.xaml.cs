@@ -30,10 +30,37 @@ public partial class MainWindow : Window, IPopoverHost
 
     private MainViewModel? _viewModel;
     private IWindowPlacementService? _placement;
+    private readonly IDwmInterop _dwm = new DwmInterop();
 
     public MainWindow()
     {
         InitializeComponent();
+    }
+
+    /// <summary>
+    /// On Win11 22H2+ this requests <c>DWMWA_WINDOW_CORNER_PREFERENCE =
+    /// DWMWCP_ROUND</c> and drops the layered-alpha HWND path so the
+    /// compositor — not WPF's software-rendered DIB — produces the
+    /// rounded corners. On older builds the call returns
+    /// <see cref="DwmCornerApplyResult.NotSupportedOnThisOs"/> and the
+    /// existing <c>AllowsTransparency="True"</c> +
+    /// <c>Background="Transparent"</c> path is preserved.
+    /// </summary>
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (_dwm.TryApplyRoundedCorners(hwnd) == DwmCornerApplyResult.Applied)
+        {
+            // HWND is now opaque. Drop per-pixel alpha so DWM
+            // doesn't try to round a non-roundable surface.
+            AllowsTransparency = false;
+            // Use the theme panel brush so a future theme change
+            // still flows through, instead of hardcoding #1A1B1E.
+            Background = (System.Windows.Media.Brush)FindResource("PanelBrush");
+        }
+        // else: keep the existing layered-alpha + inner Border
+        //       CornerRadius=14 path. Win10 / older Win11.
     }
 
     /// <summary>

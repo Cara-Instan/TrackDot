@@ -18,6 +18,7 @@ public partial class LyricsWindow : Window
     private IWindowSettingsService? _settingsService;
     private bool _isShuttingDown;
     private bool _isLoaded;
+    private readonly IDwmInterop _dwm = new DwmInterop();
 
     public LyricsWindow()
     {
@@ -86,6 +87,16 @@ public partial class LyricsWindow : Window
         if (_viewModel != null)
         {
             _viewModel.UpdateWindowHeight(ActualHeight);
+        }
+
+        // Migrate from layered-alpha HWND to opaque HWND with DWM
+        // rounded corners on Win11 22H2+. See MainWindow.OnSourceInitialized
+        // for the full rationale.
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (_dwm.TryApplyRoundedCorners(hwnd) == DwmCornerApplyResult.Applied)
+        {
+            AllowsTransparency = false;
+            Background = (System.Windows.Media.Brush)FindResource("PanelBrush");
         }
     }
 
