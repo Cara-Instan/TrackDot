@@ -34,10 +34,15 @@ public partial class App : Application
     private WindowSettingsService? _windowSettingsService;
     private IStartupService? _startupService;
     private IThemeService? _themeService;
+    private WpfThemePaletteApplier? _themePaletteApplier;
     private IWindowPlacementService? _placement;
     private DispatcherUiTicker? _ticker;
     private MediaControllerService? _mediaService;
     private GlobalHotkeyService? _globalHotkeyService;
+    private LyricsService? _lyricsService;
+    private DispatcherUiTicker? _lyricsTicker;
+    private LyricsViewModel? _lyricsViewModel;
+    private LyricsWindow? _lyricsWindow;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -57,7 +62,8 @@ public partial class App : Application
 
         // Step 1b: theme service composition and initialization.
         _themeService = new ThemeService();
-        _themeService.ApplyTheme(_themeService.SelectedTheme);
+        _themePaletteApplier = new WpfThemePaletteApplier(_themeService);
+        _themePaletteApplier.ApplyInitial();
 
         // Step 2: build window settings & secondary windows (About, Hotkeys, Settings).
         _windowSettingsService = new WindowSettingsService();
@@ -72,17 +78,30 @@ public partial class App : Application
         _hotkeysWindow = new HotkeysWindow();
         _hotkeysWindow.SetThemeService(_themeService);
 
-        // Step 3: build media-control service, view-model, popover window.
+        // Step 3: build media-control service, view-model, popover window, and lyrics window.
         _mediaService = new MediaControllerService();
         _ticker = new DispatcherUiTicker();
         _viewModel = new MainViewModel(_mediaService, _ticker);
+
+        _lyricsService = new LyricsService();
+        _lyricsTicker = new DispatcherUiTicker();
+        _lyricsViewModel = new LyricsViewModel(_mediaService, _lyricsService, _lyricsTicker, _windowSettingsService);
+        _lyricsWindow = new LyricsWindow();
+        _lyricsWindow.SetViewModel(_lyricsViewModel, _windowSettingsService);
+
         _mainWindow = new MainWindow { DataContext = _viewModel };
         _mainWindow.SetViewModel(_viewModel);
         _mainWindow.SetHeaderActions(
             onOpenSettings: () => _settingsWindow?.ShowSettings(),
             onOpenAbout: () => _aboutWindow?.ShowAbout(),
             onOpenHotkeys: () => _hotkeysWindow?.ShowHotkeys(),
+            onOpenLyrics: () => _lyricsWindow?.ShowLyrics(),
             windowSettingsService: _windowSettingsService);
+
+        if (_windowSettingsService.LyricsWindowVisible)
+        {
+            _lyricsWindow.ShowLyrics();
+        }
 
         // Step 3b: global hotkey service.
         _globalHotkeyService = new GlobalHotkeyService(
@@ -134,6 +153,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _mainWindow?.BeginShutdown();
+        _lyricsWindow?.BeginShutdown();
         _settingsWindow?.BeginShutdown();
         _aboutWindow?.BeginShutdown();
         _hotkeysWindow?.BeginShutdown();
@@ -144,6 +164,14 @@ public partial class App : Application
         try { _tray?.Dispose(); } catch { /* swallow — best effort */ }
         _tray = null;
         _trayHandle = null;
+
+        try { _lyricsWindow?.Close(); } catch { /* swallow */ }
+        _lyricsWindow = null;
+        try { _lyricsViewModel?.Dispose(); } catch { /* swallow */ }
+        _lyricsViewModel = null;
+        try { _lyricsTicker?.Stop(); } catch { /* swallow */ }
+        _lyricsTicker = null;
+        _lyricsService = null;
 
         try { _hotkeysWindow?.Close(); } catch { /* swallow */ }
         _hotkeysWindow = null;
@@ -157,6 +185,8 @@ public partial class App : Application
         _startupService = null;
         _windowSettingsService = null;
 
+        try { _themePaletteApplier?.Dispose(); } catch { /* swallow */ }
+        _themePaletteApplier = null;
         try { _themeService?.Dispose(); } catch { /* swallow */ }
         _themeService = null;
 

@@ -27,11 +27,6 @@ public interface IThemeService : IDisposable
     event EventHandler<bool>? EffectiveThemeChanged;
 
     /// <summary>
-    /// Applies the selected theme and updates application resources.
-    /// </summary>
-    void ApplyTheme(AppThemeMode mode);
-
-    /// <summary>
     /// Detects whether Windows system setting indicates Dark mode.
     /// </summary>
     bool DetectSystemIsDark();
