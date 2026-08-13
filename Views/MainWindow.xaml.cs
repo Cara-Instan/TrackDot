@@ -175,6 +175,7 @@ public partial class MainWindow : Window, IPopoverHost
     private Action? _onOpenSettings;
     private Action? _onOpenAbout;
     private Action? _onOpenHotkeys;
+    private Action? _onOpenLyrics;
     private IWindowSettingsService? _windowSettingsService;
 
     /// <summary>
@@ -183,17 +184,19 @@ public partial class MainWindow : Window, IPopoverHost
     public bool IsPinned { get; private set; }
 
     /// <summary>
-    /// Wires header action handlers (Settings, About, Hotkeys) and window settings service.
+    /// Wires header action handlers (Settings, About, Hotkeys, Lyrics) and window settings service.
     /// </summary>
     public void SetHeaderActions(
         Action? onOpenSettings,
         Action? onOpenAbout,
         Action? onOpenHotkeys,
+        Action? onOpenLyrics = null,
         IWindowSettingsService? windowSettingsService = null)
     {
         _onOpenSettings = onOpenSettings;
         _onOpenAbout = onOpenAbout;
         _onOpenHotkeys = onOpenHotkeys;
+        _onOpenLyrics = onOpenLyrics;
 
         if (_windowSettingsService != null)
         {
@@ -218,7 +221,10 @@ public partial class MainWindow : Window, IPopoverHost
     {
         if (_windowSettingsService == null) return;
         IsPinned = _windowSettingsService.IsPinned;
-        Opacity = _windowSettingsService.WindowOpacity;
+        if (BackgroundBorder != null)
+        {
+            BackgroundBorder.Opacity = _windowSettingsService.WindowOpacity;
+        }
         UpdatePinVisualState();
     }
 
@@ -241,6 +247,11 @@ public partial class MainWindow : Window, IPopoverHost
                 ? (System.Windows.Media.Brush)FindResource("AccentBrush")
                 : (System.Windows.Media.Brush)FindResource("MutedBrush");
         }
+    }
+
+    private void OnLyricsClicked(object sender, RoutedEventArgs e)
+    {
+        _onOpenLyrics?.Invoke();
     }
 
     private void OnHotkeysClicked(object sender, RoutedEventArgs e)
@@ -271,7 +282,13 @@ public partial class MainWindow : Window, IPopoverHost
                     return;
                 }
             }
-            DragMove();
+            try
+            {
+                DragMove();
+            }
+            catch (InvalidOperationException)
+            {
+            }
         }
     }
 

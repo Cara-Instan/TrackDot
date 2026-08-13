@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
+    <PackageReference Include="Kawazu" Version="1.0.0" GeneratePathProperty="true" />
   </ItemGroup>
 
   <ItemGroup>
@@ -39,5 +40,15 @@
   <ItemGroup>
     <InternalsVisibleTo Include="TrackDot.Tests" />
   </ItemGroup>
+
+  <Target Name="CopyKawazuIpaDic" AfterTargets="Build;Publish">
+    <ItemGroup>
+      <_KawazuDicFiles Condition="Exists('$(PkgKawazu)\contentFiles\any\netcoreapp3.1')" Include="$(PkgKawazu)\contentFiles\any\netcoreapp3.1\*.*" />
+      <_KawazuDicFiles Condition="!Exists('$(PkgKawazu)\contentFiles\any\netcoreapp3.1') and Exists('$(PkgKawazu)\contentFiles\any\netstandard2.0')" Include="$(PkgKawazu)\contentFiles\any\netstandard2.0\*.*" />
+      <_KawazuDicFiles Condition="!Exists('$(PkgKawazu)\contentFiles\any\netcoreapp3.1') and !Exists('$(PkgKawazu)\contentFiles\any\netstandard2.0') and Exists('$(PkgKawazu)\content')" Include="$(PkgKawazu)\content\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_KawazuDicFiles)" DestinationFolder="$(TargetDir)IpaDic" SkipUnchangedFiles="true" Condition="Exists('$(TargetDir)')" />
+    <Copy SourceFiles="@(_KawazuDicFiles)" DestinationFolder="$(PublishDir)IpaDic" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != '' and Exists('$(PublishDir)')" />
+  </Target>
 
 </Project>

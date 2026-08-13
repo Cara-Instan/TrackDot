@@ -1,0 +1,280 @@
+<Window x:Class="TrackDot.Views.LyricsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:TrackDot.ViewModels"
+        mc:Ignorable="d"
+        Title="TrackDot — Lyrics"
+        Width="420" Height="580"
+        MinWidth="280" MinHeight="280"
+        WindowStyle="None" ResizeMode="CanResizeWithGrip" ShowInTaskbar="False"
+        Topmost="{Binding IsTopmost}"
+        Background="Transparent" AllowsTransparency="True"
+        Closing="Window_Closing" KeyDown="Window_KeyDown" SizeChanged="Window_SizeChanged"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown"
+        Icon="pack://application:,,,/TrackDot;component/Assets/AppIcon.ico">
+    <WindowChrome.WindowChrome>
+        <WindowChrome GlassFrameThickness="0"
+                      ResizeBorderThickness="6"
+                      CaptionHeight="0"
+                      CornerRadius="0"
+                      UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+    <Grid>
+        <!-- Background Panel Layer (Transparent / Semi-transparent per WindowOpacity) -->
+        <Border Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource PanelBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="14"
+                Opacity="{Binding WindowOpacity}" />
+
+        <!-- Foreground Content Layer (100% Opaque Text and Controls) -->
+        <Border Padding="14">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <!-- Header (Title, Artist, Controls) -->
+                    <RowDefinition Height="Auto" />
+                    <!-- Lyrics Content Area -->
+                    <RowDefinition Height="*" />
+                    <!-- Footer (Opacity Slider, Furigana toggle, Pin) -->
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Header Row -->
+                <Grid Grid.Row="0" Background="Transparent" Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding DisplayTitle}" FontSize="15" FontWeight="Bold" TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplayTitle}" />
+                    <TextBlock Text="{Binding DisplayArtist}" Foreground="{DynamicResource MutedBrush}" FontSize="13" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplayArtist}" />
+                </StackPanel>
+
+                <!-- Header Actions (Furigana, Pin, Close) -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Right">
+                    <!-- Furigana Ruby Toggle Button -->
+                    <Button x:Name="FuriganaButton"
+                            Style="{StaticResource HeaderActionButton}"
+                            Command="{Binding ToggleFuriganaCommand}"
+                            ToolTip="Toggle Furigana / Romaji reading text"
+                            AutomationProperties.Name="Toggle Furigana">
+                        <TextBlock Text="あ" FontSize="13" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsFuriganaVisible}" Value="True">
+                                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Button>
+
+                    <!-- Sticky / Pin Button -->
+                    <Button x:Name="PinButton"
+                            Style="{StaticResource HeaderActionButton}"
+                            Command="{Binding ToggleTopmostCommand}"
+                            ToolTip="Always on top / Sticky lyrics window"
+                            AutomationProperties.Name="Pin lyrics window">
+                        <Path x:Name="PinIconPath"
+                              Data="M 12,2 L 16,6 L 13,9 L 14,14 L 10,10 L 6,14 L 7,9 L 4,6 Z M 9,15 L 4,20"
+                              Width="14" Height="14" Stretch="Uniform">
+                            <Path.Style>
+                                <Style TargetType="Path">
+                                    <Setter Property="Fill" Value="{DynamicResource MutedBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsTopmost}" Value="True">
+                                            <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Path.Style>
+                        </Path>
+                    </Button>
+
+                    <!-- Close Button -->
+                    <Button Style="{StaticResource HeaderActionButton}"
+                            Click="OnCloseClicked"
+                            ToolTip="Close Lyrics"
+                            AutomationProperties.Name="Close Lyrics">
+                        <Path Data="M 19,6.41 L 17.59,5 L 12,10.59 L 6.41,5 L 5,6.41 L 10.59,12 L 5,17.59 L 6.41,19 L 12,13.41 L 17.59,19 L 19,17.59 L 13.41,12 Z"
+                              Fill="{DynamicResource MutedBrush}"
+                              Width="13" Height="13" Stretch="Uniform" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!-- Main Lyrics Container -->
+            <Grid Grid.Row="1" Margin="0,4">
+                <!-- Loading State -->
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <TextBlock Text="Fetching lyrics..." Foreground="{DynamicResource MutedBrush}" FontSize="14" HorizontalAlignment="Center" />
+                </StackPanel>
+
+                <!-- No Lyrics State -->
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="20">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding IsLoading}" Value="False" />
+                                        <Condition Binding="{Binding HasLyrics}" Value="False" />
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <Path Data="M 12,3 V 13.5 A 3.5,3.5 0 1,1 8.5,10 A 3.5,3.5 0 0,1 12,13.5 V 6 H 18 V 3 H 12 Z"
+                          Fill="{DynamicResource MutedBrush}" Width="36" Height="36" Stretch="Uniform" Opacity="0.3" HorizontalAlignment="Center" Margin="0,0,0,10" />
+                    <TextBlock Text="No lyrics found for this track" Foreground="{DynamicResource MutedBrush}" FontSize="14" HorizontalAlignment="Center" TextAlignment="Center" />
+                </StackPanel>
+
+                <!-- Synced Lyrics Display -->
+                <ScrollViewer x:Name="LyricsScrollViewer"
+                              VerticalScrollBarVisibility="Hidden"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Focusable="False">
+                    <ScrollViewer.Style>
+                        <Style TargetType="ScrollViewer">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasLyrics}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ScrollViewer.Style>
+
+                    <ItemsControl x:Name="LyricsItemsControl" ItemsSource="{Binding Lines}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,120" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border x:Name="LineBorder"
+                                        Margin="0,8" Padding="8,4"
+                                        HorizontalAlignment="Center"
+                                        MaxWidth="{Binding ViewportWidth, RelativeSource={RelativeSource AncestorType=ScrollViewer}}"
+                                        RenderTransformOrigin="0.5,0.5"
+                                        Cursor="Hand">
+                                    <Border.InputBindings>
+                                        <MouseBinding MouseAction="LeftClick"
+                                                      Command="{Binding DataContext.SeekToLineCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                      CommandParameter="{Binding}" />
+                                    </Border.InputBindings>
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Opacity" Value="0.45" />
+                                            <Style.Triggers>
+                                                <DataTrigger Value="True">
+                                                    <DataTrigger.Binding>
+                                                        <MultiBinding Converter="{StaticResource EqualityToBooleanConverter}">
+                                                            <Binding Path="Index" />
+                                                            <Binding Path="DataContext.ActiveLineIndex" RelativeSource="{RelativeSource AncestorType=Window}" />
+                                                        </MultiBinding>
+                                                    </DataTrigger.Binding>
+                                                    <Setter Property="Opacity" Value="1.0" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Border.RenderTransform>
+                                        <ScaleTransform x:Name="LineScale" ScaleX="1.0" ScaleY="1.0" />
+                                    </Border.RenderTransform>
+
+                                    <!-- Furigana Segment WrapPanel -->
+                                    <ItemsControl ItemsSource="{Binding Segments}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Vertical" HorizontalAlignment="Center" Margin="2,0">
+                                                    <!-- Furigana Reading -->
+                                                    <TextBlock x:Name="RubyText"
+                                                               Text="{Binding Reading}"
+                                                               FontSize="{Binding DataContext.RubyFontSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                               Foreground="{DynamicResource MutedBrush}"
+                                                               HorizontalAlignment="Center"
+                                                               Opacity="0.85">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                <Style.Triggers>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding HasReading}" Value="True" />
+                                                                            <Condition Binding="{Binding DataContext.IsFuriganaVisible, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                    <!-- Surface Text -->
+                                                    <TextBlock x:Name="SurfaceText"
+                                                               Text="{Binding Surface}"
+                                                               FontSize="{Binding DataContext.BaseFontSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                               Foreground="{DynamicResource TextBrush}"
+                                                               HorizontalAlignment="Center"
+                                                               TextAlignment="Center"
+                                                               TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+
+            <!-- Footer Row (Opacity Slider, Controls) -->
+            <Grid Grid.Row="2" Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="Opacity" Foreground="{DynamicResource MutedBrush}" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <Slider x:Name="OpacitySlider"
+                        Grid.Column="1"
+                        Minimum="20" Maximum="100"
+                        Value="{Binding OpacityPercent, Mode=TwoWay}"
+                        IsMoveToPointEnabled="True"
+                        Height="3" VerticalAlignment="Center"
+                        Style="{StaticResource VolumeSliderStyle}" />
+                <TextBlock Grid.Column="2"
+                           Text="{Binding OpacityPercent, StringFormat='{}{0:0}%'}"
+                           Foreground="{DynamicResource MutedBrush}"
+                           FontSize="11" Width="36" TextAlignment="Right" VerticalAlignment="Center" />
+            </Grid>
+        </Grid>
+    </Border>
+    </Grid>
+</Window>
