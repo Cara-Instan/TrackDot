@@ -6,6 +6,12 @@ TrackDot reads the OS-selected session through the Windows **System Media Transp
 
 Around the SMTC core, TrackDot ships a small suite of companion surfaces — a **synced lyrics window** with Japanese romaji / furigana, **system-wide global hotkeys** (toggle, transport, volume), **popover opacity**, **drag-to-move** popover, **dark / light / system theme**, and a packaged **Installer** + **Portable** distribution.
 
+## Why I built this
+
+Why did I create this simple app? Well, it stems from my frustrations. As long as I've been using Windows and laptops that come with the Windows OS pre-installed, there's never been a global control for "next," "prev," "pause," or anything else related to the music player. Yet Linux and macOS have this feature.
+
+Pretty simple reason, isn't it? That's exactly why I put it in the [cara-instan](https://github.com/Cara-Instan) repo.
+
 ---
 
 ## Features
@@ -63,7 +69,7 @@ dotnet build TrackDot.sln -c Release
 ./bin/x64/Release/net8.0-windows10.0.19041.0/TrackDot.exe
 ```
 
-**Expected output from step 2:** `Passed: 273, Failed: 0, Skipped: 0`. Both Debug and Release are 273 / 273. The suite covers 27 modules: smoke, snapshot contracts, mapper, decoder, command dispatch, service guards, progress interpolation, view-model (main + lyrics + settings), single-instance, tray-icon service, placement, exception logger, startup service, asset-resource, **global-hotkey service**, **hotkeys window**, **lyrics service**, **lyrics view-model**, **theme service**, **about window**, **session picker**, **volume control**, **portable mode**, **play-pause icon converter**, **WPF test bootstrap / pack-URI contract**, **popover show-raise contract**, **view-model lifecycle**.
+**Expected output from step 2:** `Passed: 293, Failed: 0, Skipped: 0`. Both Debug and Release are 293 / 293. The suite covers 28 modules: smoke, snapshot contracts, mapper, decoder, command dispatch, service guards, progress interpolation, view-model (main + lyrics + settings), single-instance, tray-icon service, placement, exception logger, startup service, asset-resource, **global-hotkey service**, **hotkeys window**, **lyrics service**, **lyrics view-model**, **theme service**, **about window**, **session picker**, **volume control**, **portable mode**, **play-pause icon converter**, **WPF test bootstrap / pack-URI contract**, **popover show-raise contract**, **view-model lifecycle**, **audio volume matcher** (pure-function coverage for the AUMID-to-session heuristic in `AudioVolumeService.AumidMatchesProcess`).
 
 **Do not run the published executable from a build directory whose path contains a trailing separator.** The launch-at-sign-in detection path (`StartupService.IsEnabled`) compares with `OrdinalIgnoreCase` + trimmed trailing separators, but the Run-key parser on Windows does *not* — paths stored without a trailing separator are the canonical form.
 
@@ -258,7 +264,7 @@ TrackDot/
 │                                IUiTicker + DispatcherUiTicker
 ├── TrackDot.csproj              TFM net8.0-windows10.0.19041.0, x64, UseWPF=true
 ├── TrackDot.sln
-└── tests/TrackDot.Tests/        273 xUnit tests; EnableDefaultCompileItems=false
+└── tests/TrackDot.Tests/        293 xUnit tests; EnableDefaultCompileItems=false
 ```
 
 The test project uses `EnableDefaultCompileItems=false` with explicit `<Compile Include="..." />` entries. The application csproj excludes `tests\**\*.cs` from the WPF design-time temp build (see [Build pitfalls](#build-pitfalls)).
@@ -360,7 +366,7 @@ For the **Portable edition** ZIP: drop `portable.dat` into the extracted directo
 
 ## Manual smoke matrix
 
-The automated xUnit suite (273 / 273) covers contracts, lifecycle, and disposal — but it cannot exercise real SMTC sources, real displays, or real Windows behaviour. For the integration matrix (Windows 10 / 11, Chrome / Edge / Spotify / VLC, multi-monitor, 100/125/150% DPI, 30-minute hidden soak, 15-minute playback soak, taskbar position), see [`docs/SMOKE_TEST.md`](docs/SMOKE_TEST.md).
+The automated xUnit suite (293 / 293) covers contracts, lifecycle, and disposal — but it cannot exercise real SMTC sources, real displays, or real Windows behaviour. For the integration matrix (Windows 10 / 11, Chrome / Edge / Spotify / VLC, multi-monitor, 100/125/150% DPI, 30-minute hidden soak, 15-minute playback soak, taskbar position), see [`docs/SMOKE_TEST.md`](docs/SMOKE_TEST.md).
 
 ---
 
