@@ -5,6 +5,7 @@ using Xunit;
 
 namespace TrackDot.Tests;
 
+[Collection("WPF")]
 public class HotkeysWindowTests
 {
     [Fact]

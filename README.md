@@ -113,7 +113,7 @@ All changes save instantly — no Apply button needed.
 
 ### Lyrics window
 
-**Right-click the tray icon → Lyrics** (or the popover's lyrics button). Time-synced lyrics load from [lrclib.net](https://lrclib.net); Japanese tracks get romaji + furigana automatically. Opacity, topmost, and window position persist across launches.
+**Right-click the tray icon → Lyrics** (or the popover's lyrics button). Time-synced lyrics load from [Unison](https://unison.boidu.dev) (with automatic fallback to [lrclib.net](https://lrclib.net)); Japanese tracks get romaji + furigana automatically. Opacity, topmost, and window position persist across launches.
 
 ---
 
@@ -131,7 +131,7 @@ All changes save instantly — no Apply button needed.
 
 **Nothing is uploaded.** TrackDot does not phone home, has no telemetry, and no analytics SDK.
 
-- The only network call is the **lyrics window**, which fetches from `lrclib.net` only when you open it.
+- The only network call is the **lyrics window**, which fetches from `unison.boidu.dev` (and `lrclib.net` as fallback) only when you open it.
 - Settings are stored in the Windows registry (`HKCU\Software\TrackDot`) — except in **Portable mode**, where they live in `settings.json` next to the executable.
 - A crash log is written to `%LocalAppData%\TrackDot\crash.log` only if something goes wrong.
 
@@ -284,7 +284,7 @@ See [`docs/RELEASE.md`](docs/RELEASE.md) for the full release pipeline.
 - **VLC needs SMTC enabled.** Toggle "Share media with Windows Media Player" in VLC's preferences, otherwise VLC won't appear as a source. Some VLC versions accept Previous / Next but ignore Stop.
 - **Volume control requires an audio session.** Some SMTC sources (rare; mostly UWP media) do not own an audio session — the slider then shows the last value and writes are silently dropped.
 - **Single source per process.** Manual source selection is deferred — the service contract already exposes `SourceAppUserModelId` so a picker could be added without changing the downstream contract.
-- **Lyrics lookup is best-effort.** `lrclib.net` is community-maintained; not every track has synced lyrics, and Japanese tracks occasionally surface an English translation instead.
+- **Lyrics lookup is best-effort.** Unison and LRCLIB are community-maintained; not every track has synced lyrics, and Japanese tracks occasionally surface an English translation instead.
 
 ---
 
@@ -294,4 +294,4 @@ MIT. See the repository header / package metadata.
 
 - Tray icon component: [`Hardcodet.NotifyIcon.Wpf`](https://github.com/Hardcodet/notifyicon-wpf) 1.1.0 — MIT.
 - Japanese romaji / furigana conversion: [`Kawazu`](https://github.com/herlandroando/Kawazu) 1.0.0 — IPA dictionary is bundled with the package.
-- Lyrics lookup: [lrclib.net](https://lrclib.net) — public community-maintained LRC API.
+- Lyrics lookup: [Unison](https://unison.boidu.dev) (ODbL-1.0) and [lrclib.net](https://lrclib.net) — public community-maintained lyrics APIs.

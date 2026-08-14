@@ -27,6 +27,18 @@ public class LyricsService : ILyricsService
         @"[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]",
         RegexOptions.Compiled);
 
+    private static readonly Regex TtmlParagraphRegex = new(
+        @"<p\b[^>]*\bbegin=""(?<begin>[^""]+)""[^>]*>(?<content>.*?)</p>",
+        RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.IgnoreCase);
+
+    private static readonly Regex TtmlTimestampRegex = new(
+        @"^(?:(?:(?<hours>\d+):)?(?<min>\d+):(?<sec>\d{1,2})(?:\.(?<ms>\d+))?|(?<rawSec>\d+(?:\.\d+)?)(?:s)?|(?<rawMs>\d+)ms)$",
+        RegexOptions.Compiled);
+
+    private static readonly Regex HtmlTagRegex = new(
+        @"<[^>]+>",
+        RegexOptions.Compiled);
+
     private readonly HttpClient _httpClient;
     private readonly ConcurrentDictionary<string, IReadOnlyList<LyricLine>> _cache = new(StringComparer.OrdinalIgnoreCase);
     private KawazuConverter? _kawazuConverter;
@@ -57,22 +69,81 @@ public class LyricsService : ILyricsService
 
         try
         {
-            var dto = await FetchFromLrclibAsync(title, artist, album, duration, cancellationToken).ConfigureAwait(false);
-            if (dto is null)
+            // 1. Try Unison (primary source)
+            var rawLines = await FetchFromUnisonAsync(title, artist, album, duration, cancellationToken).ConfigureAwait(false);
+            if (rawLines != null && rawLines.Count > 0)
             {
-                _cache[cacheKey] = Array.Empty<LyricLine>();
-                return Array.Empty<LyricLine>();
+                System.Diagnostics.Debug.WriteLine($"[LyricsService] Using lyrics from Unison ({rawLines.Count} lines)");
+                var lines = await ConvertRawLinesToLyricLinesAsync(rawLines, cancellationToken).ConfigureAwait(false);
+                _cache[cacheKey] = lines;
+                return lines;
             }
 
-            var lines = await ParseAndConvertLyricsAsync(dto, cancellationToken).ConfigureAwait(false);
-            _cache[cacheKey] = lines;
-            return lines;
+            // 2. Fallback to LRCLIB
+            System.Diagnostics.Debug.WriteLine("[LyricsService] Unison returned no lyrics; falling back to LRCLIB");
+            var lrclibDto = await FetchFromLrclibAsync(title, artist, album, duration, cancellationToken).ConfigureAwait(false);
+            if (lrclibDto != null)
+            {
+                var lrclibRaw = ExtractLrclibRawLines(lrclibDto);
+                if (lrclibRaw.Count > 0)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[LyricsService] Using lyrics from LRCLIB ({lrclibRaw.Count} lines)");
+                    var lines = await ConvertRawLinesToLyricLinesAsync(lrclibRaw, cancellationToken).ConfigureAwait(false);
+                    _cache[cacheKey] = lines;
+                    return lines;
+                }
+            }
+
+            _cache[cacheKey] = Array.Empty<LyricLine>();
+            return Array.Empty<LyricLine>();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             System.Diagnostics.Debug.WriteLine($"[LyricsService] Error fetching lyrics: {ex.Message}");
             return Array.Empty<LyricLine>();
         }
+    }
+
+    private async Task<List<(TimeSpan timestamp, string text)>?> FetchFromUnisonAsync(
+        string title, string artist, string album, TimeSpan duration, CancellationToken ct)
+    {
+        string url = $"https://unison.boidu.dev/lyrics?song={Uri.EscapeDataString(title)}&artist={Uri.EscapeDataString(artist)}";
+        if (!string.IsNullOrWhiteSpace(album))
+        {
+            url += $"&album={Uri.EscapeDataString(album)}";
+        }
+        if (duration > TimeSpan.Zero)
+        {
+            url += $"&duration={(int)Math.Round(duration.TotalSeconds)}";
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[LyricsService] GET {url}");
+        try
+        {
+            using var response = await _httpClient.GetAsync(url, ct).ConfigureAwait(false);
+            System.Diagnostics.Debug.WriteLine($"[LyricsService] Unison responded {(int)response.StatusCode} {response.StatusCode}");
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                var envelope = JsonSerializer.Deserialize<UnisonEnvelopeDto>(content, JsonOptions);
+                if (envelope is { Success: true, Data.Lyrics: not null } && !string.IsNullOrWhiteSpace(envelope.Data.Lyrics))
+                {
+                    var data = envelope.Data;
+                    System.Diagnostics.Debug.WriteLine($"[LyricsService] Unison match accepted (song='{data.Song}', artist='{data.Artist}', format='{data.Format}', syncType='{data.SyncType}')");
+                    return ParseRawLyrics(data.Lyrics, data.Format);
+                }
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LyricsService] Unison HttpRequestException: {ex.Message}");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LyricsService] Unison unexpected error: {ex.Message}");
+        }
+
+        return null;
     }
 
     private async Task<LrclibResponseDto?> FetchFromLrclibAsync(
@@ -179,17 +250,16 @@ public class LyricsService : ILyricsService
             $"[LyricsService]   {label} track='{dto.TrackName}' artist='{dto.ArtistName}' duration={dto.Duration}s synced={(hasSynced ? $"yes({syncedLineCount} lines)" : "no")} plain={(hasPlain ? $"yes({plainLineCount} lines)" : "no")}");
     }
 
-    private async Task<IReadOnlyList<LyricLine>> ParseAndConvertLyricsAsync(
-        LrclibResponseDto dto, CancellationToken ct)
+    internal static List<(TimeSpan timestamp, string text)> ExtractLrclibRawLines(LrclibResponseDto dto)
     {
-        var rawLines = new List<(TimeSpan timestamp, string text)>();
-
         if (!string.IsNullOrWhiteSpace(dto.SyncedLyrics))
         {
-            rawLines = ParseLrc(dto.SyncedLyrics);
+            return ParseLrc(dto.SyncedLyrics);
         }
-        else if (!string.IsNullOrWhiteSpace(dto.PlainLyrics))
+
+        if (!string.IsNullOrWhiteSpace(dto.PlainLyrics))
         {
+            var rawLines = new List<(TimeSpan timestamp, string text)>();
             var plain = dto.PlainLyrics.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
             for (int i = 0; i < plain.Length; i++)
             {
@@ -199,8 +269,112 @@ public class LyricsService : ILyricsService
                     rawLines.Add((TimeSpan.Zero, lineText));
                 }
             }
+            return rawLines;
         }
 
+        return new List<(TimeSpan timestamp, string text)>();
+    }
+
+    internal static List<(TimeSpan timestamp, string text)> ParseRawLyrics(string lyrics, string? format = null)
+    {
+        if (string.IsNullOrWhiteSpace(lyrics)) return new List<(TimeSpan, string)>();
+
+        if (string.Equals(format, "ttml", StringComparison.OrdinalIgnoreCase) ||
+            (lyrics.Contains("<tt", StringComparison.OrdinalIgnoreCase) && lyrics.Contains("</tt>", StringComparison.OrdinalIgnoreCase)))
+        {
+            var ttmlResult = ParseTtml(lyrics);
+            if (ttmlResult.Count > 0) return ttmlResult;
+        }
+
+        if (string.Equals(format, "lrc", StringComparison.OrdinalIgnoreCase) || LrcTimestampRegex.IsMatch(lyrics))
+        {
+            var lrcResult = ParseLrc(lyrics);
+            if (lrcResult.Count > 0) return lrcResult;
+        }
+
+        var result = new List<(TimeSpan timestamp, string text)>();
+        var plain = lyrics.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+        foreach (var line in plain)
+        {
+            var lineText = line.Trim();
+            if (!string.IsNullOrEmpty(lineText))
+            {
+                result.Add((TimeSpan.Zero, lineText));
+            }
+        }
+        return result;
+    }
+
+    internal static List<(TimeSpan timestamp, string text)> ParseTtml(string ttmlContent)
+    {
+        var result = new List<(TimeSpan timestamp, string text)>();
+        if (string.IsNullOrWhiteSpace(ttmlContent)) return result;
+
+        var matches = TtmlParagraphRegex.Matches(ttmlContent);
+        foreach (Match match in matches)
+        {
+            string beginStr = match.Groups["begin"].Value;
+            string rawContent = match.Groups["content"].Value;
+
+            var timestamp = ParseTimestamp(beginStr);
+            string text = HtmlTagRegex.Replace(rawContent, string.Empty);
+            text = System.Net.WebUtility.HtmlDecode(text).Trim();
+            text = Regex.Replace(text, @"\s+", " ");
+
+            if (!string.IsNullOrEmpty(text))
+            {
+                result.Add((timestamp, text));
+            }
+        }
+
+        result.Sort((a, b) => a.timestamp.CompareTo(b.timestamp));
+        return result;
+    }
+
+    internal static TimeSpan ParseTimestamp(string timeStr)
+    {
+        if (string.IsNullOrWhiteSpace(timeStr)) return TimeSpan.Zero;
+        timeStr = timeStr.Trim();
+
+        var match = TtmlTimestampRegex.Match(timeStr);
+        if (!match.Success)
+        {
+            if (double.TryParse(timeStr, NumberStyles.Float, CultureInfo.InvariantCulture, out double secs))
+            {
+                return TimeSpan.FromSeconds(secs);
+            }
+            return TimeSpan.Zero;
+        }
+
+        if (match.Groups["rawMs"].Success && int.TryParse(match.Groups["rawMs"].Value, CultureInfo.InvariantCulture, out int rawMs))
+        {
+            return TimeSpan.FromMilliseconds(rawMs);
+        }
+
+        if (match.Groups["rawSec"].Success && double.TryParse(match.Groups["rawSec"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double rawSec))
+        {
+            return TimeSpan.FromSeconds(rawSec);
+        }
+
+        int hours = match.Groups["hours"].Success ? int.Parse(match.Groups["hours"].Value, CultureInfo.InvariantCulture) : 0;
+        int min = match.Groups["min"].Success ? int.Parse(match.Groups["min"].Value, CultureInfo.InvariantCulture) : 0;
+        int sec = match.Groups["sec"].Success ? int.Parse(match.Groups["sec"].Value, CultureInfo.InvariantCulture) : 0;
+        int ms = 0;
+        if (match.Groups["ms"].Success)
+        {
+            string msStr = match.Groups["ms"].Value;
+            if (msStr.Length == 1) ms = int.Parse(msStr, CultureInfo.InvariantCulture) * 100;
+            else if (msStr.Length == 2) ms = int.Parse(msStr, CultureInfo.InvariantCulture) * 10;
+            else if (msStr.Length == 3) ms = int.Parse(msStr, CultureInfo.InvariantCulture);
+            else if (msStr.Length > 3) ms = int.Parse(msStr.Substring(0, 3), CultureInfo.InvariantCulture);
+        }
+
+        return new TimeSpan(0, hours, min, sec, ms);
+    }
+
+    private async Task<IReadOnlyList<LyricLine>> ConvertRawLinesToLyricLinesAsync(
+        IReadOnlyList<(TimeSpan timestamp, string text)> rawLines, CancellationToken ct)
+    {
         var result = new List<LyricLine>(rawLines.Count);
         int index = 0;
 
@@ -239,7 +413,7 @@ public class LyricsService : ILyricsService
         return result;
     }
 
-    private static List<(TimeSpan timestamp, string text)> ParseLrc(string lrcContent)
+    internal static List<(TimeSpan timestamp, string text)> ParseLrc(string lrcContent)
     {
         var result = new List<(TimeSpan timestamp, string text)>();
         var lines = lrcContent.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
@@ -308,8 +482,6 @@ public class LyricsService : ILyricsService
         var segments = new List<FuriganaSegment>();
         var converter = GetKawazuConverter();
 
-        // Kawazu converts mixed text to spaced romaji or hiragana readings
-        // For segments, we can split text into words / kanji runs and convert each
         var words = text.Split(' ');
         foreach (var word in words)
         {
@@ -398,6 +570,26 @@ public class LyricsService : ILyricsService
         PropertyNameCaseInsensitive = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
+
+    internal sealed record UnisonEnvelopeDto(
+        [property: JsonPropertyName("success")] bool Success,
+        [property: JsonPropertyName("data")] UnisonDataDto? Data,
+        [property: JsonPropertyName("error")] string? Error,
+        [property: JsonPropertyName("code")] string? Code,
+        [property: JsonPropertyName("hint")] string? Hint);
+
+    internal sealed record UnisonDataDto(
+        [property: JsonPropertyName("id")] int? Id,
+        [property: JsonPropertyName("videoId")] string? VideoId,
+        [property: JsonPropertyName("song")] string? Song,
+        [property: JsonPropertyName("artist")] string? Artist,
+        [property: JsonPropertyName("album")] string? Album,
+        [property: JsonPropertyName("duration")] double? Duration,
+        [property: JsonPropertyName("lyrics")] string? Lyrics,
+        [property: JsonPropertyName("format")] string? Format,
+        [property: JsonPropertyName("language")] string? Language,
+        [property: JsonPropertyName("syncType")] string? SyncType,
+        [property: JsonPropertyName("confidence")] string? Confidence);
 
     internal sealed record LrclibResponseDto(
         [property: JsonPropertyName("syncedLyrics")] string? SyncedLyrics,

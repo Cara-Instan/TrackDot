@@ -82,7 +82,7 @@ public class DwmInteropTests
                 // callback completes before we read the handle.
                 window.Show();
                 PumpDispatcher();
-                var hwnd = new WindowInteropHelper(window).Handle;
+                var hwnd = new WindowInteropHelper(window).EnsureHandle();
                 result = new DwmInterop().TryApplyRoundedCorners(hwnd);
             }
             catch (Exception ex)
