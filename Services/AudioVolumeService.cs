@@ -17,9 +17,24 @@ namespace TrackDot.Services;
 /// endpoint, reads each session's PID via
 /// <c>IAudioSessionControl2.GetProcessId</c>, and looks up the
 /// process name. It then performs a case-insensitive heuristic match
-/// against the AUMID (e.g. "Spotify.exe" → process "Spotify",
-/// "com.spotify.client" → any process whose name contains "Spotify").
+/// against the AUMID using two stages:
 /// </para>
+/// <list type="number">
+///   <item>
+///     <b>Primary — process name ↔ AUMID.</b> Covers the common case
+///     ("Spotify.exe" → process "Spotify",
+///     "com.spotify.client" → any process whose name contains "Spotify").
+///   </item>
+///   <item>
+///     <b>Secondary — session display name ↔ AUMID.</b> Covers players
+///     whose audio is produced by a separate renderer process whose
+///     name has no overlap with the AUMID (Spotify's
+///     <c>SpotifyRenderer.exe</c> vs AUMID <c>com.spotify.client</c>,
+///     some Electron-based players, etc.). The OS-set display name
+///     (e.g. "Spotify", "Microsoft Edge") still contains a segment
+///     matching the AUMID, so the same segment-substring rules apply.
+///   </item>
+/// </list>
 /// <para>
 /// <b>Failure safety.</b> Every public method wraps its body in a
 /// <c>try/catch</c>. When matching fails (no audio session found, COM
@@ -164,10 +179,18 @@ internal sealed class AudioVolumeService : IDisposable
                     ctrl2.GetProcessId(out uint pid);
                     if (pid == 0) continue;
 
+                    // Read the OS-set session display name (slot 5, inherited
+                    // from IAudioSessionControl). May be null when the
+                    // session has no display name — AumidMatchesProcess
+                    // treats that as "no secondary signal".
+                    string? displayName = null;
+                    try { ctrl2.GetDisplayName(out displayName); }
+                    catch { /* non-fatal — fall through with null */ }
+
                     try
                     {
                         using var proc = Process.GetProcessById((int)pid);
-                        if (AumidMatchesProcess(aumid, proc.ProcessName))
+                        if (AumidMatchesProcess(aumid, proc.ProcessName, displayName))
                         {
                             // QI the same session object for ISimpleAudioVolume
                             return (ISimpleAudioVolume)ctrl;
@@ -193,41 +216,86 @@ internal sealed class AudioVolumeService : IDisposable
 
     /// <summary>
     /// Returns <see langword="true"/> when the process identified by
-    /// <paramref name="processName"/> is a plausible match for the
-    /// SMTC AUMID <paramref name="aumid"/>.
+    /// <paramref name="processName"/> (and optionally the OS-set session
+    /// <paramref name="displayName"/>) is a plausible match for the SMTC
+    /// AUMID <paramref name="aumid"/>.
     /// </summary>
     /// <remarks>
-    /// Two strategies:
-    /// <list type="bullet">
+    /// <para>
+    /// Three strategies, in priority order. The first match wins:
+    /// </para>
+    /// <list type="number">
     ///   <item>
-    ///     <b>.exe suffix</b> — strip the extension and compare directly.
-    ///     "chrome.exe" matches process "chrome".
+    ///     <b>.exe suffix — process name.</b> Strip the extension and
+    ///     compare directly. "chrome.exe" matches process "chrome".
     ///   </item>
     ///   <item>
-    ///     <b>Reverse-DNS / package family name</b> — split on common
-    ///     delimiters and do a substring match on each segment that is at
-    ///     least 4 characters. "com.spotify.client" → segment "spotify"
-    ///     → matches process "Spotify".
+    ///     <b>Reverse-DNS / package family name — process name.</b> Split
+    ///     on common delimiters and do a substring match on each segment
+    ///     that is at least 4 characters. "com.spotify.client" → segment
+    ///     "spotify" → matches process "Spotify".
+    ///   </item>
+    ///   <item>
+    ///     <b>Reverse-DNS — session display name (secondary).</b> Same
+    ///     segment-substring rules applied to the OS-set session display
+    ///     name. Covers players whose audio is produced by a separate
+    ///     renderer process whose name has no overlap with the AUMID
+    ///     (e.g. Spotify's <c>SpotifyRenderer.exe</c> vs AUMID
+    ///     <c>com.spotify.client</c>, where the renderer name fails
+    ///     stages 1–2 but the OS-set display name "Spotify" matches
+    ///     the "spotify" segment in stage 3). A <see langword="null"/>
+    ///     or whitespace-only display name is treated as "no signal"
+    ///     — stage 3 is skipped, leaving the primary stages' verdict.
     ///   </item>
     /// </list>
     /// </remarks>
-    private static bool AumidMatchesProcess(string aumid, string processName)
+    internal static bool AumidMatchesProcess(string aumid, string processName, string? displayName)
     {
+        // Stage 1+2 — process-name heuristics (existing behaviour, unchanged).
         if (aumid.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         {
             var stem = Path.GetFileNameWithoutExtension(aumid);
-            return processName.Equals(stem, StringComparison.OrdinalIgnoreCase);
+            if (processName.Equals(stem, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        else
+        {
+            foreach (var seg in aumid.Split(['.', '!', '_', '-', '+'], StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (seg.Length >= 4 &&
+                    processName.Contains(seg, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
         }
 
-        // Package family name / reverse-DNS
+        // Stage 3 — display-name secondary match.
+        // Skip when there is no signal. Null/whitespace display name =
+        // "no display name set by the OS" — leave the primary verdict.
+        if (string.IsNullOrWhiteSpace(displayName)) return false;
+
+        // For the .exe form, stage 3 is intentionally NOT applied: a
+        // stem-equality primary rule paired with a permissive substring
+        // secondary rule would let "chrome.exe" AUMID match a session
+        // whose display name happens to be "Google Chrome" — too risky
+        // for cross-app collisions given how short common .exe stems
+        // are. We accept that .exe AUMIDs whose audio renderer ships
+        // under a totally different name will fail to match (no
+        // production player observed today exhibits this shape — the
+        // renderer name is always the same stem).
+        if (aumid.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) return false;
+
+        // Non-.exe AUMIDs — segment-substring against the display name.
         foreach (var seg in aumid.Split(['.', '!', '_', '-', '+'], StringSplitOptions.RemoveEmptyEntries))
         {
             if (seg.Length >= 4 &&
-                processName.Contains(seg, StringComparison.OrdinalIgnoreCase))
+                displayName.Contains(seg, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
         }
+
         return false;
     }
 

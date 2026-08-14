@@ -116,9 +116,16 @@ internal interface IAudioSessionControl
  InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 internal interface IAudioSessionControl2
 {
-    // Inherited from IAudioSessionControl (slots 3–11, all stubs)
+    // Inherited from IAudioSessionControl (slots 3–11)
     [PreserveSig] int Stub_GetState();
-    [PreserveSig] int Stub_GetDisplayName();
+    // slot 5 — GetDisplayName ← needed (secondary match signal for sessions
+    // whose renderer-process name has no overlap with the AUMID; e.g. Spotify's
+    // "SpotifyRenderer.exe" audio subprocess vs AUMID "com.spotify.client").
+    // Returns the OS-set human-readable session name (e.g. "Spotify",
+    // "Microsoft Edge", "foobar2000"). Returns NULL string when the session
+    // has no display name set — callers MUST treat null as "no signal".
+    [PreserveSig]
+    int GetDisplayName([MarshalAs(UnmanagedType.LPWStr)] out string pRetVal);
     [PreserveSig] int Stub_SetDisplayName();
     [PreserveSig] int Stub_GetIconPath();
     [PreserveSig] int Stub_SetIconPath();

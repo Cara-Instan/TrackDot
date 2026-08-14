@@ -89,50 +89,94 @@ public class LyricsService : ILyricsService
             getUrl += $"&duration={(int)Math.Round(duration.TotalSeconds)}";
         }
 
+        System.Diagnostics.Debug.WriteLine($"[LyricsService] GET {getUrl}");
         try
         {
             using var response = await _httpClient.GetAsync(getUrl, ct).ConfigureAwait(false);
+            System.Diagnostics.Debug.WriteLine($"[LyricsService] /api/get responded {(int)response.StatusCode} {response.StatusCode}");
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                System.Diagnostics.Debug.WriteLine($"[LyricsService] /api/get body length={content.Length} bytes");
                 var result = JsonSerializer.Deserialize<LrclibResponseDto>(content, JsonOptions);
                 if (result != null && (!string.IsNullOrWhiteSpace(result.SyncedLyrics) || !string.IsNullOrWhiteSpace(result.PlainLyrics)))
                 {
+                    LogResponseCandidate("get", result);
                     bool queryHasJapanese = JapaneseCharRegex.IsMatch(title) || JapaneseCharRegex.IsMatch(artist);
                     string combined = (result.SyncedLyrics ?? "") + " " + (result.PlainLyrics ?? "");
                     bool resultHasJapanese = JapaneseCharRegex.IsMatch(combined);
 
                     if (!queryHasJapanese || resultHasJapanese || !string.IsNullOrWhiteSpace(result.SyncedLyrics))
                     {
+                        System.Diagnostics.Debug.WriteLine($"[LyricsService] /api/get match accepted (track='{result.TrackName}', artist='{result.ArtistName}')");
                         return result;
                     }
+
+                    System.Diagnostics.Debug.WriteLine("[LyricsService] /api/get match rejected: query has Japanese but result had neither Japanese lyrics nor synced timestamps");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine("[LyricsService] /api/get response had no usable lyrics");
                 }
             }
         }
-        catch (HttpRequestException) { /* Fall through to search */ }
+        catch (HttpRequestException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LyricsService] /api/get HttpRequestException: {ex.Message}");
+        }
 
         // 2. Search fallback /api/search
         string searchUrl = $"https://lrclib.net/api/search?q={Uri.EscapeDataString($"{title} {artist}")}";
+        System.Diagnostics.Debug.WriteLine($"[LyricsService] GET {searchUrl}");
         try
         {
             using var response = await _httpClient.GetAsync(searchUrl, ct).ConfigureAwait(false);
+            System.Diagnostics.Debug.WriteLine($"[LyricsService] /api/search responded {(int)response.StatusCode} {response.StatusCode}");
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                System.Diagnostics.Debug.WriteLine($"[LyricsService] /api/search body length={content.Length} bytes");
                 var searchResults = JsonSerializer.Deserialize<List<LrclibResponseDto>>(content, JsonOptions);
                 if (searchResults != null && searchResults.Count > 0)
                 {
+                    System.Diagnostics.Debug.WriteLine($"[LyricsService] /api/search returned {searchResults.Count} candidate(s):");
+                    for (int i = 0; i < searchResults.Count; i++)
+                    {
+                        LogResponseCandidate($"search[{i}]", searchResults[i]);
+                    }
+
                     var bestMatch = SelectBestLyricsMatch(searchResults, title, artist, duration);
                     if (bestMatch != null)
                     {
+                        System.Diagnostics.Debug.WriteLine($"[LyricsService] /api/search selected match (track='{bestMatch.TrackName}', artist='{bestMatch.ArtistName}')");
                         return bestMatch;
                     }
+
+                    System.Diagnostics.Debug.WriteLine("[LyricsService] /api/search candidates were all rejected by SelectBestLyricsMatch");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine("[LyricsService] /api/search returned an empty result list");
                 }
             }
         }
-        catch (HttpRequestException) { }
+        catch (HttpRequestException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LyricsService] /api/search HttpRequestException: {ex.Message}");
+        }
 
+        System.Diagnostics.Debug.WriteLine("[LyricsService] No lyrics found from lrclib");
         return null;
+    }
+
+    private static void LogResponseCandidate(string label, LrclibResponseDto dto)
+    {
+        bool hasSynced = !string.IsNullOrWhiteSpace(dto.SyncedLyrics);
+        bool hasPlain = !string.IsNullOrWhiteSpace(dto.PlainLyrics);
+        int syncedLineCount = hasSynced ? dto.SyncedLyrics!.Split('\n').Length : 0;
+        int plainLineCount = hasPlain ? dto.PlainLyrics!.Split('\n').Length : 0;
+        System.Diagnostics.Debug.WriteLine(
+            $"[LyricsService]   {label} track='{dto.TrackName}' artist='{dto.ArtistName}' duration={dto.Duration}s synced={(hasSynced ? $"yes({syncedLineCount} lines)" : "no")} plain={(hasPlain ? $"yes({plainLineCount} lines)" : "no")}");
     }
 
     private async Task<IReadOnlyList<LyricLine>> ParseAndConvertLyricsAsync(
