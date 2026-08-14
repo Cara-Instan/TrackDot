@@ -2,7 +2,7 @@
 
 **A tiny Windows tray app that controls your music.** Click the icon, get a floating popover with the current track, artwork, and playback controls — no taskbar button, no window to manage.
 
-![TrackDot popover showing now-playing track, artwork, transport controls, and volume](docs/images/player-tracker-window.png)
+![Logo](Assets/AppIcon.ico)
 
 ---
 
@@ -25,14 +25,17 @@ TrackDot sits quietly in your system tray and surfaces **what's playing right no
 
 ### The popover
 ![TrackDot popover](docs/images/player-tracker-window.png)
+
 *The floating popover — artwork, track info, progress bar, transport buttons, and volume.*
 
 ### Keyboard shortcuts
 ![TrackDot keyboard shortcuts window](docs/images/keyboard-shortcut.png)
+
 *A built-in reference window for every shortcut.*
 
 ### Synced lyrics (with Japanese support)
 ![TrackDot lyrics window](docs/images/lyrics-window.png)
+
 *Time-synced lyrics with romaji readings above each kanji/kana word.*
 
 ---
