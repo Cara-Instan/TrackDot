@@ -3,6 +3,15 @@
 **A tiny Windows tray app that controls your music.** Click the icon, get a floating popover with the current track, artwork, and playback controls — no taskbar button, no window to manage.
 
 ![Logo](Assets/AppIcon.ico)
+<br>
+
+---
+
+## The Story Behind It
+ 
+Why build this? Simple: sheer frustration.
+
+If you’ve ever switched between OS environments, you know that macOS and Linux make global media controls effortless. On Windows, however, controlling your background music on the fly without dedicated keyboard keys is surprisingly clunky. I wanted a quick, no-nonsense way to control playback globally without interrupting my workflow. That’s why this lives in cara-instan—scratching an itch with a fast, practical solution.
 
 ---
 
