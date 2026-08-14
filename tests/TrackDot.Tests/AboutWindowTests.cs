@@ -36,7 +36,7 @@ public class AboutWindowTests
                 var window = new AboutWindow();
                 Assert.NotNull(window);
                 Assert.Equal("About TrackDot", window.Title);
-                Assert.StartsWith("v0.1.0", window.VersionTextBlock.Text);
+                Assert.StartsWith("v0.2.0-beta", window.VersionTextBlock.Text);
             }
             catch (Exception ex)
             {
