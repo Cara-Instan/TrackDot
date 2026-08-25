@@ -156,7 +156,7 @@ internal interface ISimpleAudioVolume
     [PreserveSig]
     int SetMasterVolume(
         float fLevel,
-        [MarshalAs(UnmanagedType.LPStruct)] Guid EventContext);
+        [In] ref Guid EventContext);
     // slot 4
     [PreserveSig]
     int GetMasterVolume(out float pfLevel);
@@ -164,7 +164,7 @@ internal interface ISimpleAudioVolume
     [PreserveSig]
     int SetMute(
         [MarshalAs(UnmanagedType.Bool)] bool bMute,
-        [MarshalAs(UnmanagedType.LPStruct)] Guid EventContext);
+        [In] ref Guid EventContext);
     // slot 6
     [PreserveSig]
     int GetMute([MarshalAs(UnmanagedType.Bool)] out bool pbMute);

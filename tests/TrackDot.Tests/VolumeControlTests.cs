@@ -85,6 +85,17 @@ public sealed class VolumeControlTests
         Assert.Equal(1, svc.ToggleMuteCallCount);
     }
 
+    [Fact]
+    public void Setting_IsVisible_to_true_invokes_RefreshVolumeAsync()
+    {
+        var (vm, svc) = BuildViewModel();
+        Assert.Equal(0, svc.RefreshVolumeCallCount);
+
+        vm.IsVisible = true;
+
+        Assert.Equal(1, svc.RefreshVolumeCallCount);
+    }
+
     private static (MainViewModel Vm, FakeMediaControllerService Svc) BuildViewModel()
     {
         var svc = new FakeMediaControllerService();

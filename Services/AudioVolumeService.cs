@@ -117,7 +117,8 @@ internal sealed class AudioVolumeService : IDisposable
         {
             var vol = FindSessionVolume(aumid);
             if (vol is null) return;
-            vol.SetMasterVolume(Math.Clamp(volume, 0f, 1f), Guid.Empty);
+            var ctx = Guid.Empty;
+            vol.SetMasterVolume(Math.Clamp(volume, 0f, 1f), ref ctx);
             Marshal.ReleaseComObject(vol);
         }
         catch { }
@@ -134,7 +135,8 @@ internal sealed class AudioVolumeService : IDisposable
         {
             var vol = FindSessionVolume(aumid);
             if (vol is null) return;
-            vol.SetMute(mute, Guid.Empty);
+            var ctx = Guid.Empty;
+            vol.SetMute(mute, ref ctx);
             Marshal.ReleaseComObject(vol);
         }
         catch { }
@@ -156,55 +158,78 @@ internal sealed class AudioVolumeService : IDisposable
 
         // Get the default audio render endpoint (eRender=0, eMultimedia=1)
         int hr = _enumerator.GetDefaultAudioEndpoint(0, 1, out IMMDevice device);
-        if (hr != 0) return null;
+        if (hr != 0 || device is null) return null;
 
         try
         {
             // Activate IAudioSessionManager2 on the endpoint
             Guid mgr2Id = IidAudioSessionManager2;
             hr = device.Activate(ref mgr2Id, 23 /*CLSCTX_ALL*/, IntPtr.Zero, out object mgr2Obj);
-            if (hr != 0) return null;
+            if (hr != 0 || mgr2Obj is null) return null;
             var mgr2 = (IAudioSessionManager2)mgr2Obj;
 
-            mgr2.GetSessionEnumerator(out IAudioSessionEnumerator sessionEnum);
-            sessionEnum.GetCount(out int count);
-
-            for (int i = 0; i < count; i++)
+            try
             {
-                sessionEnum.GetSession(i, out IAudioSessionControl ctrl);
+                hr = mgr2.GetSessionEnumerator(out IAudioSessionEnumerator sessionEnum);
+                if (hr != 0 || sessionEnum is null) return null;
+
                 try
                 {
-                    // QI to IAudioSessionControl2 to get the PID
-                    var ctrl2 = (IAudioSessionControl2)ctrl;
-                    ctrl2.GetProcessId(out uint pid);
-                    if (pid == 0) continue;
+                    sessionEnum.GetCount(out int count);
 
-                    // Read the OS-set session display name (slot 5, inherited
-                    // from IAudioSessionControl). May be null when the
-                    // session has no display name — AumidMatchesProcess
-                    // treats that as "no secondary signal".
-                    string? displayName = null;
-                    try { ctrl2.GetDisplayName(out displayName); }
-                    catch { /* non-fatal — fall through with null */ }
-
-                    try
+                    for (int i = 0; i < count; i++)
                     {
-                        using var proc = Process.GetProcessById((int)pid);
-                        if (AumidMatchesProcess(aumid, proc.ProcessName, displayName))
+                        hr = sessionEnum.GetSession(i, out IAudioSessionControl ctrl);
+                        if (hr != 0 || ctrl is null) continue;
+
+                        try
                         {
-                            // QI the same session object for ISimpleAudioVolume
-                            return (ISimpleAudioVolume)ctrl;
+                            // QI to IAudioSessionControl2 to get the PID
+                            if (ctrl is IAudioSessionControl2 ctrl2)
+                            {
+                                ctrl2.GetProcessId(out uint pid);
+                                if (pid != 0)
+                                {
+                                    // Read the OS-set session display name
+                                    string? displayName = null;
+                                    try { ctrl2.GetDisplayName(out displayName); }
+                                    catch { /* non-fatal — fall through with null */ }
+
+                                    try
+                                    {
+                                        using var proc = Process.GetProcessById((int)pid);
+                                        if (AumidMatchesProcess(aumid, proc.ProcessName, displayName))
+                                        {
+                                            // QI the same session object for ISimpleAudioVolume
+                                            if (ctrl is ISimpleAudioVolume volumeControl)
+                                            {
+                                                return volumeControl;
+                                            }
+                                        }
+                                    }
+                                    catch (ArgumentException)
+                                    {
+                                        // Process exited between GetProcessId and GetProcessById — skip.
+                                    }
+                                }
+                            }
+
+                            Marshal.ReleaseComObject(ctrl);
+                        }
+                        catch
+                        {
+                            Marshal.ReleaseComObject(ctrl);
                         }
                     }
-                    catch (ArgumentException)
-                    {
-                        // Process exited between GetProcessId and GetProcessById — skip.
-                    }
                 }
-                catch
+                finally
                 {
-                    // Session does not implement IAudioSessionControl2 (e.g. system sounds)
+                    Marshal.ReleaseComObject(sessionEnum);
                 }
+            }
+            finally
+            {
+                Marshal.ReleaseComObject(mgr2);
             }
         }
         finally

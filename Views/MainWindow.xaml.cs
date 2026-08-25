@@ -198,6 +198,16 @@ public partial class MainWindow : Window, IPopoverHost
             cmd.Execute(slider.Value);
     }
 
+    private void VolumeSlider_MouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (_viewModel?.SetVolumeCommand is not { } cmd) return;
+        double delta = e.Delta > 0 ? 5.0 : -5.0;
+        double newVol = Math.Clamp(_viewModel.VolumePercent + delta, 0.0, 100.0);
+        if (cmd.CanExecute(newVol))
+            cmd.Execute(newVol);
+        e.Handled = true;
+    }
+
 
     private Action? _onOpenSettings;
     private Action? _onOpenAbout;

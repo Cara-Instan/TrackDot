@@ -286,6 +286,7 @@
                         IsMoveToPointEnabled="True"
                         IsEnabled="{Binding HasMedia}"
                         PreviewMouseLeftButtonUp="VolumeSlider_MouseLeftButtonUp"
+                        PreviewMouseWheel="VolumeSlider_MouseWheel"
                         Style="{StaticResource VolumeSliderStyle}"
                         AutomationProperties.Name="Volume" />
 

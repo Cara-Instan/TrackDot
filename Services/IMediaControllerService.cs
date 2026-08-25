@@ -76,6 +76,12 @@ public interface IMediaControllerService : IAsyncDisposable
     /// </summary>
     Task ToggleMuteAsync();
 
+    /// <summary>
+    /// Refreshes the volume and mute state for the active session from CoreAudio
+    /// and publishes an updated snapshot.
+    /// </summary>
+    Task RefreshVolumeAsync();
+
     // ── Transport ────────────────────────────────────────────────────────
 
     /// <summary>

@@ -65,6 +65,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             if (_isVisible == value) return;
             _isVisible = value;
             UpdateTicker();
+            if (_isVisible)
+            {
+                _ = _service.RefreshVolumeAsync();
+            }
         }
     }
 

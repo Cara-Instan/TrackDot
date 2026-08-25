@@ -62,6 +62,9 @@ public sealed class FakeMediaControllerService : IMediaControllerService
     /// <summary>How many times <see cref="ToggleMuteAsync"/> was called.</summary>
     public int ToggleMuteCallCount { get; private set; }
 
+    /// <summary>How many times <see cref="RefreshVolumeAsync"/> was called.</summary>
+    public int RefreshVolumeCallCount { get; private set; }
+
     // ── Call counters ────────────────────────────────────────────────────────
 
     /// <summary>How many times <see cref="InitializeAsync"/> was called.</summary>
@@ -124,6 +127,13 @@ public sealed class FakeMediaControllerService : IMediaControllerService
     {
         ToggleMuteCallCount++;
         if (ThrowOnCommand) throw new InvalidOperationException("fake: ToggleMute refused");
+        return Task.CompletedTask;
+    }
+
+    public Task RefreshVolumeAsync()
+    {
+        RefreshVolumeCallCount++;
+        if (ThrowOnCommand) throw new InvalidOperationException("fake: RefreshVolume refused");
         return Task.CompletedTask;
     }
 

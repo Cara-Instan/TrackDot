@@ -169,6 +169,10 @@ public sealed class MediaControllerService : IMediaControllerService
         lock (_gate) { _pinnedAumid = sourceAppUserModelId; }
 
         await SetCurrentSessionAsync(target).ConfigureAwait(true);
+        if (_manager is not null)
+        {
+            RefreshSessionList(_manager);
+        }
     }
 
     // ── Feature 10 ──────────────────────────────────────────────────────────
@@ -191,6 +195,14 @@ public sealed class MediaControllerService : IMediaControllerService
         if (string.IsNullOrEmpty(aumid)) return Task.CompletedTask;
         var (_, currentMute) = _volumeService.GetVolumeInfo(aumid);
         _volumeService.SetMute(aumid, !currentMute);
+        PublishVolumeUpdate();
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc/>
+    public Task RefreshVolumeAsync()
+    {
+        if (_disposed) return Task.CompletedTask;
         PublishVolumeUpdate();
         return Task.CompletedTask;
     }
@@ -221,9 +233,6 @@ public sealed class MediaControllerService : IMediaControllerService
         manager.CurrentSessionChanged += OnCurrentSessionChanged;
         manager.SessionsChanged       += OnSessionsChanged;
 
-        // Publish an initial session list, then adopt the current session.
-        RefreshSessionList(manager);
-
         var initial = manager.GetCurrentSession();
         if (initial is null)
         {
@@ -233,6 +242,9 @@ public sealed class MediaControllerService : IMediaControllerService
         {
             await SetCurrentSessionAsync(initial).ConfigureAwait(true);
         }
+
+        // Publish an initial session list, reflecting the adopted session.
+        RefreshSessionList(manager);
     }
 
     // ── Transport commands ───────────────────────────────────────────────────
@@ -318,6 +330,18 @@ public sealed class MediaControllerService : IMediaControllerService
         session.PlaybackInfoChanged       += OnPlaybackInfoChanged;
         session.TimelinePropertiesChanged += OnTimelinePropertiesChanged;
 
+        var aumid = session.SourceAppUserModelId;
+        var (vol, muted) = _volumeService.GetVolumeInfo(aumid);
+
+        var prevSnapshot = Volatile.Read(ref _currentSnapshot);
+        var sessionSnapshot = prevSnapshot with
+        {
+            SourceAppUserModelId = aumid,
+            Volume = vol,
+            IsMuted = muted
+        };
+        Publish(sessionSnapshot);
+
         await RefreshMediaPropertiesAsync(session, generation).ConfigureAwait(true);
         RefreshPlaybackInfoAsync(session, generation);
         RefreshTimelinePropertiesAsync(session, generation);
@@ -367,9 +391,8 @@ public sealed class MediaControllerService : IMediaControllerService
             next = manager.GetCurrentSession();
         }
 
-        // Refresh the session list regardless of which session we adopt.
-        RefreshSessionList(manager);
         await SetCurrentSessionAsync(next).ConfigureAwait(true);
+        RefreshSessionList(manager);
     }
 
     private void OnSessionsChanged(
