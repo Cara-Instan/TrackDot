@@ -27,7 +27,7 @@ TrackDot sits quietly in your system tray and surfaces **what's playing right no
 | 📌 **Always there** | Tray-only — no taskbar clutter, draggable, and pinnable |
 | ⌨️ **Configurable Hotkeys** | Fully customizable system-wide and local popover shortcuts |
 | 🎤 **Synced Lyrics & HUD** | Synced lyrics window + floating karaoke HUD overlay with Japanese romaji/furigana & translations |
-| 🎮 **Discord Rich Presence** | Optional, privacy-first Discord RPC status with album art resolution & app whitelist |
+| 🎮 **Discord Rich Presence** | Optional, privacy-first Discord RPC status with album art resolution & app whitelist. It will default disable and can be configurable the apps you want to share on rich presence at settings |
 
 ---
 
