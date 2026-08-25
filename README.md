@@ -315,7 +315,7 @@ See [`docs/RELEASE.md`](docs/RELEASE.md) for the full release pipeline.
 
 ### Third-Party Components & APIs
 - Tray icon component: [`Hardcodet.NotifyIcon.Wpf`](https://github.com/Hardcodet/notifyicon-wpf) 1.1.0 — MIT.
-- Japanese romaji / furigana conversion: [`Kawazu`](https://github.com/Cutano/Kawazu) 1.1.4 — IPA dictionary is bundled with the package.
+- Japanese romaji / furigana conversion: [`Kawazu`](https://github.com/Cutano/Kawazu) 1.0.0 — IPA dictionary is bundled with the package.
 - Lyrics lookup: [Unison](https://unison.boidu.dev) (ODbL-1.0) and [lrclib.net](https://lrclib.net) — public community-maintained lyrics APIs.
 - Album Artwork resolution: [iTunes Search API](https://itunes.apple.com) and [Deezer Search API](https://api.deezer.com) — public search endpoints for high-res cover art lookup.
 - Discord Rich Presence: Discord IPC named pipes via local client integration.
