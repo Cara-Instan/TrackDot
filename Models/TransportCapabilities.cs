@@ -11,7 +11,9 @@ public sealed record TransportCapabilities(
     bool CanStop,
     bool CanGoPrevious,
     bool CanGoNext,
-    bool CanSeek = false)
+    bool CanSeek = false,
+    bool CanChangeShuffle = false,
+    bool CanChangeAutoRepeatMode = false)
 {
     /// <summary>
     /// All controls disabled. Returned for "no session" so the UI
@@ -23,5 +25,7 @@ public sealed record TransportCapabilities(
         CanStop: false,
         CanGoPrevious: false,
         CanGoNext: false,
-        CanSeek: false);
+        CanSeek: false,
+        CanChangeShuffle: false,
+        CanChangeAutoRepeatMode: false);
 }

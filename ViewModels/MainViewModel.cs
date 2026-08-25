@@ -189,7 +189,52 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>Tool tip for the mute toggle button.</summary>
     public string MuteToolTip => _snapshot.IsMuted ? "Unmute" : "Mute";
 
+    // ── Shuffle & Repeat ──────────────────────────────────────────────────
+
+    /// <summary>True when shuffle mode is active.</summary>
+    public bool IsShuffleActive => _snapshot.Playback.IsShuffleActive == true;
+
+    /// <summary>True when the active session supports changing shuffle mode.</summary>
+    public bool CanChangeShuffle => _snapshot.Playback.Capabilities.CanChangeShuffle;
+
+    /// <summary>Current repeat mode (None, Track, List).</summary>
+    public MediaAutoRepeatMode AutoRepeatMode => _snapshot.Playback.AutoRepeatMode;
+
+    /// <summary>True when repeat mode is Track or List.</summary>
+    public bool IsRepeatActive => _snapshot.Playback.AutoRepeatMode != MediaAutoRepeatMode.None;
+
+    /// <summary>True when repeat is set to repeat one track.</summary>
+    public bool IsRepeatTrack => _snapshot.Playback.AutoRepeatMode == MediaAutoRepeatMode.Track;
+
+    /// <summary>True when the active session supports changing repeat mode.</summary>
+    public bool CanChangeAutoRepeatMode => _snapshot.Playback.Capabilities.CanChangeAutoRepeatMode;
+
+    /// <summary>Vector path for shuffle button.</summary>
+    public string ShufflePathData => "M 10.59,9.17 L 5.41,4 L 4,5.41 L 9.17,10.59 L 10.59,9.17 Z M 14.5,4 L 16.54,6.04 L 4,18.59 L 5.41,20 L 17.96,7.46 L 20,9.5 V 4 H 14.5 Z M 14.5,20 H 20 V 14.5 L 17.96,16.54 L 13.41,12 L 12,13.41 L 16.54,17.96 L 14.5,20 Z";
+
+    /// <summary>Vector path for repeat button.</summary>
+    public string RepeatPathData => AutoRepeatMode == MediaAutoRepeatMode.Track
+        ? "M 7,7 H 17 V 10 L 21,6 L 17,2 V 5 H 5 V 11 H 7 V 7 Z M 17,17 H 7 V 14 L 3,18 L 7,22 V 19 H 19 V 13 H 17 V 17 Z M 11.2,15 V 9.5 L 10,10.2 V 9.1 L 11.2,8.3 H 12.3 V 15 H 11.2 Z"
+        : "M 7,7 H 17 V 10 L 21,6 L 17,2 V 5 H 5 V 11 H 7 V 7 Z M 17,17 H 7 V 14 L 3,18 L 7,22 V 19 H 19 V 13 H 17 V 17 Z";
+
+    /// <summary>Tool tip text for Shuffle button.</summary>
+    public string ShuffleToolTip => IsShuffleActive ? "Shuffle: On" : "Shuffle: Off";
+
+    /// <summary>Tool tip text for Repeat button.</summary>
+    public string RepeatToolTip => AutoRepeatMode switch
+    {
+        MediaAutoRepeatMode.Track => "Repeat: One track",
+        MediaAutoRepeatMode.List  => "Repeat: All tracks",
+        _                         => "Repeat: Off",
+    };
+
     // ── Transport commands ───────────────────────────────────────────────────
+
+    /// <summary>Toggles shuffle mode.</summary>
+    public AsyncRelayCommand ToggleShuffleCommand { get; }
+
+    /// <summary>Cycles repeat mode.</summary>
+    public AsyncRelayCommand CycleRepeatCommand { get; }
 
     /// <summary>Previous track.</summary>
     public AsyncRelayCommand PreviousCommand { get; }
@@ -249,6 +294,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _service = service;
         _ticker = ticker;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
+
+        ToggleShuffleCommand = new AsyncRelayCommand(
+            execute: () => _service.ToggleShuffleAsync(),
+            canExecute: () => HasMedia);
+
+        CycleRepeatCommand = new AsyncRelayCommand(
+            execute: () => _service.CycleRepeatModeAsync(),
+            canExecute: () => HasMedia);
 
         PreviousCommand = new AsyncRelayCommand(
             execute: () => _service.PreviousAsync(),
@@ -348,6 +401,17 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(DurationSeconds));
         OnPropertyChanged(nameof(ElapsedTimeText));
         OnPropertyChanged(nameof(DurationTimeText));
+        // Shuffle & Repeat
+        OnPropertyChanged(nameof(IsShuffleActive));
+        OnPropertyChanged(nameof(CanChangeShuffle));
+        OnPropertyChanged(nameof(AutoRepeatMode));
+        OnPropertyChanged(nameof(IsRepeatActive));
+        OnPropertyChanged(nameof(IsRepeatTrack));
+        OnPropertyChanged(nameof(CanChangeAutoRepeatMode));
+        OnPropertyChanged(nameof(ShufflePathData));
+        OnPropertyChanged(nameof(RepeatPathData));
+        OnPropertyChanged(nameof(ShuffleToolTip));
+        OnPropertyChanged(nameof(RepeatToolTip));
         // Session picker
         OnPropertyChanged(nameof(AvailableSessions));
         OnPropertyChanged(nameof(HasMultipleSessions));
@@ -361,6 +425,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void RaiseCommandStates()
     {
+        ToggleShuffleCommand.RaiseCanExecuteChanged();
+        CycleRepeatCommand.RaiseCanExecuteChanged();
         PreviousCommand.RaiseCanExecuteChanged();
         TogglePlayPauseCommand.RaiseCanExecuteChanged();
         StopCommand.RaiseCanExecuteChanged();

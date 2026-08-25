@@ -123,4 +123,14 @@ public interface IMediaControllerService : IAsyncDisposable
     /// </summary>
     /// <param name="positionSeconds">Target playback position in seconds.</param>
     Task SeekAsync(double positionSeconds);
+
+    /// <summary>
+    /// Toggles shuffle mode for the active media session.
+    /// </summary>
+    Task<bool> ToggleShuffleAsync();
+
+    /// <summary>
+    /// Cycles auto-repeat mode (None -> List -> Track -> None) for the active media session.
+    /// </summary>
+    Task<bool> CycleRepeatModeAsync();
 }

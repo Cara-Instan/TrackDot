@@ -15,7 +15,9 @@ public sealed record PlaybackSnapshot(
     TimeSpan StartTime,
     TimeSpan EndTime,
     DateTimeOffset TimelineUpdatedAt,
-    TransportCapabilities Capabilities)
+    TransportCapabilities Capabilities,
+    bool? IsShuffleActive = null,
+    MediaAutoRepeatMode AutoRepeatMode = MediaAutoRepeatMode.None)
 {
     /// <summary>
     /// Neutral playback snapshot corresponding to "no active session".
@@ -28,5 +30,7 @@ public sealed record PlaybackSnapshot(
         StartTime: TimeSpan.Zero,
         EndTime: TimeSpan.Zero,
         TimelineUpdatedAt: DateTimeOffset.MinValue,
-        Capabilities: TransportCapabilities.None);
+        Capabilities: TransportCapabilities.None,
+        IsShuffleActive: null,
+        AutoRepeatMode: MediaAutoRepeatMode.None);
 }

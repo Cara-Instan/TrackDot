@@ -157,6 +157,8 @@
                         IsEnabled="{Binding CanSeek}"
                         PreviewMouseLeftButtonDown="SeekSlider_PreviewMouseLeftButtonDown"
                         PreviewMouseLeftButtonUp="SeekSlider_MouseLeftButtonUp"
+                        MouseMove="SeekSlider_MouseMove"
+                        MouseLeave="SeekSlider_MouseLeave"
                         Style="{StaticResource SeekSliderStyle}"
                         AutomationProperties.Name="Track progress" />
             </Grid>
@@ -164,9 +166,9 @@
             <!-- Transport Controls Row -->
             <Grid Grid.Row="2" Margin="0,10,0,2">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="45" />
+                    <ColumnDefinition Width="42" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="45" />
+                    <ColumnDefinition Width="42" />
                 </Grid.ColumnDefinitions>
                 
                 <!-- Elapsed Time -->
@@ -176,8 +178,28 @@
                            HorizontalAlignment="Left"
                            VerticalAlignment="Center" />
                 
-                <!-- 3-Button Center Controls (Vector Geometries for 100% Crisp Font-Independent Icons) -->
+                <!-- 5-Button Center Controls (Shuffle, Previous, Play/Pause, Next, Repeat) -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <!-- Shuffle Button -->
+                    <Button Style="{StaticResource ModeTransportButton}"
+                            Command="{Binding ToggleShuffleCommand}"
+                            AutomationProperties.Name="Shuffle"
+                            ToolTip="{Binding ShuffleToolTip}">
+                        <Path Data="{Binding ShufflePathData}"
+                              Width="13" Height="13" Stretch="Uniform">
+                            <Path.Style>
+                                <Style TargetType="Path">
+                                    <Setter Property="Fill" Value="{DynamicResource MutedBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsShuffleActive}" Value="True">
+                                            <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Path.Style>
+                        </Path>
+                    </Button>
+
                     <!-- Previous Track Button (Bar + Left Triangle) -->
                     <Button Style="{StaticResource SecondaryTransportButton}" 
                             Command="{Binding PreviousCommand}" 
@@ -206,6 +228,26 @@
                         <Path Data="M 2,2 L 11,8 L 2,14 Z M 11,2 H 14 V 14 H 11 Z" 
                                Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" 
                                Width="14" Height="14" Stretch="Uniform" />
+                    </Button>
+
+                    <!-- Repeat Button -->
+                    <Button Style="{StaticResource ModeTransportButton}"
+                            Command="{Binding CycleRepeatCommand}"
+                            AutomationProperties.Name="Repeat"
+                            ToolTip="{Binding RepeatToolTip}">
+                        <Path Data="{Binding RepeatPathData}"
+                              Width="13" Height="13" Stretch="Uniform">
+                            <Path.Style>
+                                <Style TargetType="Path">
+                                    <Setter Property="Fill" Value="{DynamicResource MutedBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsRepeatActive}" Value="True">
+                                            <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Path.Style>
+                        </Path>
                     </Button>
                 </StackPanel>
                 

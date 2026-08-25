@@ -79,6 +79,8 @@ public sealed class FakeMediaControllerService : IMediaControllerService
     public int StopCallCount { get; private set; }
     public int NextCallCount { get; private set; }
     public int SeekCallCount { get; private set; }
+    public int ToggleShuffleCallCount { get; private set; }
+    public int CycleRepeatModeCallCount { get; private set; }
 
     /// <summary>
     /// Set true to make every command throw, so the view-model's
@@ -170,6 +172,20 @@ public sealed class FakeMediaControllerService : IMediaControllerService
         SeekCallCount++;
         if (ThrowOnCommand) throw new InvalidOperationException("fake: Seek refused");
         return Task.CompletedTask;
+    }
+
+    public Task<bool> ToggleShuffleAsync()
+    {
+        ToggleShuffleCallCount++;
+        if (ThrowOnCommand) throw new InvalidOperationException("fake: ToggleShuffle refused");
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> CycleRepeatModeAsync()
+    {
+        CycleRepeatModeCallCount++;
+        if (ThrowOnCommand) throw new InvalidOperationException("fake: CycleRepeatMode refused");
+        return Task.FromResult(true);
     }
 
     public ValueTask DisposeAsync()

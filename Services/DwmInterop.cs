@@ -17,10 +17,21 @@ public sealed class DwmInterop : IDwmInterop
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     // DWMWCP_ROUND = 2: ask DWM to round the OS frame.
     private const int DWMWCP_ROUND = 2;
-    // DWMWCP_DONOTROUND = 1 (documented for the next reader; not used here).
-    private const int DWMWCP_DONOTROUND = 1;
+    // DWMWA_SYSTEMBACKDROP_TYPE = 38 (Win11 22H2+)
+    private const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+    // 3 = DWMSBT_TRANSIENTWINDOW (Acrylic)
+    public const int DWMSBT_TRANSIENTWINDOW = 3;
 
     public bool IsWindows11_22H2_OrLater() => IsWindows11_22H2_OrLaterInternal();
+
+    public bool TryApplySystemBackdrop(IntPtr hwnd, int backdropType = DWMSBT_TRANSIENTWINDOW)
+    {
+        if (hwnd == IntPtr.Zero || !IsWindows11_22H2_OrLaterInternal()) return false;
+        int type = backdropType;
+        int hr = NativeMethods.DwmSetWindowAttribute(
+            hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref type, sizeof(int));
+        return hr == 0;
+    }
 
     public DwmCornerApplyResult TryApplyRoundedCorners(IntPtr hwnd)
     {

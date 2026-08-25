@@ -199,6 +199,28 @@ public partial class MainWindow : Window, IPopoverHost
             cmd.Execute(slider.Value);
     }
 
+    private void SeekSlider_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Slider slider) return;
+        if (_viewModel is null || _viewModel.DurationSeconds <= 0) return;
+
+        var pos = e.GetPosition(slider);
+        double actualWidth = slider.ActualWidth;
+        if (actualWidth <= 0) return;
+
+        double ratio = Math.Clamp(pos.X / actualWidth, 0.0, 1.0);
+        double targetSeconds = ratio * _viewModel.DurationSeconds;
+        slider.ToolTip = $"Seek to {MainViewModelHelpers.FormatTime(TimeSpan.FromSeconds(targetSeconds))}";
+    }
+
+    private void SeekSlider_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Slider slider)
+        {
+            slider.ToolTip = "Track progress";
+        }
+    }
+
     private void VolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (sender is not System.Windows.Controls.Slider slider) return;

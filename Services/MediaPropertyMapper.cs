@@ -42,10 +42,12 @@ public static class MediaPropertyMapper
     /// </summary>
     public sealed record PlaybackInfoShape(
         GlobalSystemMediaTransportControlsSessionPlaybackStatus Status,
-        ControlsShape? Controls);
+        ControlsShape? Controls,
+        bool? IsShuffleActive = null,
+        Windows.Media.MediaPlaybackAutoRepeatMode? AutoRepeatMode = null);
 
     /// <summary>
-    /// Five transport-relevant flags from SMTC's playback controls,
+    /// Transport-relevant flags from SMTC's playback controls,
     /// flattened into a record so the mapper and its tests never
     /// touch the WinRT runtime class.
     /// </summary>
@@ -55,7 +57,9 @@ public static class MediaPropertyMapper
         bool CanStop,
         bool CanGoPrevious,
         bool CanGoNext,
-        bool CanSeek = false);
+        bool CanSeek = false,
+        bool CanChangeShuffle = false,
+        bool CanChangeAutoRepeatMode = false);
 
     /// <summary>
     /// Timeline projection. All three TimeSpans plus a LastUpdated
@@ -88,7 +92,20 @@ public static class MediaPropertyMapper
         };
 
     /// <summary>
-    /// Copies the five transport-relevant flags from the controls
+    /// Maps WinRT <see cref="Windows.Media.MediaPlaybackAutoRepeatMode"/> to our <see cref="MediaAutoRepeatMode"/>.
+    /// </summary>
+    public static MediaAutoRepeatMode MapAutoRepeatMode(
+        Windows.Media.MediaPlaybackAutoRepeatMode? repeatMode)
+        => repeatMode switch
+        {
+            Windows.Media.MediaPlaybackAutoRepeatMode.None  => MediaAutoRepeatMode.None,
+            Windows.Media.MediaPlaybackAutoRepeatMode.Track => MediaAutoRepeatMode.Track,
+            Windows.Media.MediaPlaybackAutoRepeatMode.List  => MediaAutoRepeatMode.List,
+            _ => MediaAutoRepeatMode.None,
+        };
+
+    /// <summary>
+    /// Copies transport-relevant flags from the controls
     /// shape into our <see cref="TransportCapabilities"/> record.
     /// </summary>
     /// <remarks>
@@ -105,12 +122,14 @@ public static class MediaPropertyMapper
         }
 
         return new TransportCapabilities(
-            CanPlay:       controls.CanPlay,
-            CanPause:      controls.CanPause,
-            CanStop:       controls.CanStop,
-            CanGoPrevious: controls.CanGoPrevious,
-            CanGoNext:     controls.CanGoNext,
-            CanSeek:       controls.CanSeek);
+            CanPlay:                 controls.CanPlay,
+            CanPause:                controls.CanPause,
+            CanStop:                 controls.CanStop,
+            CanGoPrevious:           controls.CanGoPrevious,
+            CanGoNext:               controls.CanGoNext,
+            CanSeek:                 controls.CanSeek,
+            CanChangeShuffle:        controls.CanChangeShuffle,
+            CanChangeAutoRepeatMode: controls.CanChangeAutoRepeatMode);
     }
 
     /// <summary>
@@ -202,6 +221,8 @@ public static class MediaPropertyMapper
             StartTime:          startTime,
             EndTime:            endTime,
             TimelineUpdatedAt:  timelineUpdatedAt,
-            Capabilities:       MapPlaybackControls(playbackInfo.Controls));
+            Capabilities:       MapPlaybackControls(playbackInfo.Controls),
+            IsShuffleActive:    playbackInfo.IsShuffleActive,
+            AutoRepeatMode:     MapAutoRepeatMode(playbackInfo.AutoRepeatMode));
     }
 }

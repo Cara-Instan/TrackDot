@@ -294,6 +294,52 @@ public sealed class MediaControllerService : IMediaControllerService
         return session.TryChangePlaybackPositionAsync(position.Ticks).AsTask();
     }
 
+    /// <inheritdoc/>
+    public async Task<bool> ToggleShuffleAsync()
+    {
+        if (_disposed) return false;
+        var session = Volatile.Read(ref _currentSession);
+        if (session is null) return false;
+
+        var currentShuffle = Volatile.Read(ref _currentSnapshot).Playback.IsShuffleActive ?? false;
+        var targetShuffle = !currentShuffle;
+
+        try
+        {
+            return await session.TryChangeShuffleActiveAsync(targetShuffle).AsTask().ConfigureAwait(false);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> CycleRepeatModeAsync()
+    {
+        if (_disposed) return false;
+        var session = Volatile.Read(ref _currentSession);
+        if (session is null) return false;
+
+        var currentMode = Volatile.Read(ref _currentSnapshot).Playback.AutoRepeatMode;
+        var targetMode = currentMode switch
+        {
+            MediaAutoRepeatMode.None  => Windows.Media.MediaPlaybackAutoRepeatMode.List,
+            MediaAutoRepeatMode.List  => Windows.Media.MediaPlaybackAutoRepeatMode.Track,
+            MediaAutoRepeatMode.Track => Windows.Media.MediaPlaybackAutoRepeatMode.None,
+            _                         => Windows.Media.MediaPlaybackAutoRepeatMode.None,
+        };
+
+        try
+        {
+            return await session.TryChangeAutoRepeatModeAsync(targetMode).AsTask().ConfigureAwait(false);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static bool CanTogglePlayPause(TransportCapabilities caps)
     {
         return caps.CanPlay || caps.CanPause;
@@ -547,15 +593,21 @@ public sealed class MediaControllerService : IMediaControllerService
 
         var controlsShape = info.Controls is { } c
             ? new MediaPropertyMapper.ControlsShape(
-                CanPlay:       c.IsPlayEnabled,
-                CanPause:      c.IsPauseEnabled,
-                CanStop:       c.IsStopEnabled,
-                CanGoPrevious: c.IsPreviousEnabled,
-                CanGoNext:     c.IsNextEnabled,
-                CanSeek:       c.IsPlaybackPositionEnabled)
+                CanPlay:                 c.IsPlayEnabled,
+                CanPause:                c.IsPauseEnabled,
+                CanStop:                 c.IsStopEnabled,
+                CanGoPrevious:           c.IsPreviousEnabled,
+                CanGoNext:               c.IsNextEnabled,
+                CanSeek:                 c.IsPlaybackPositionEnabled,
+                CanChangeShuffle:        c.IsShuffleEnabled,
+                CanChangeAutoRepeatMode: c.IsRepeatEnabled)
             : null;
 
-        var playbackInfoShape = new MediaPropertyMapper.PlaybackInfoShape(info.PlaybackStatus, controlsShape);
+        var playbackInfoShape = new MediaPropertyMapper.PlaybackInfoShape(
+            Status:          info.PlaybackStatus,
+            Controls:        controlsShape,
+            IsShuffleActive: info.IsShuffleActive,
+            AutoRepeatMode:  info.AutoRepeatMode);
 
         var previous = Volatile.Read(ref _currentSnapshot);
         var timelineShape = new MediaPropertyMapper.TimelineShape(
@@ -566,8 +618,8 @@ public sealed class MediaControllerService : IMediaControllerService
 
         var playback = MediaPropertyMapper.BuildPlaybackSnapshot(
             playbackInfo: playbackInfoShape,
-            timeline: timelineShape,
-            capturedAt: DateTimeOffset.UtcNow);
+            timeline:     timelineShape,
+            capturedAt:   DateTimeOffset.UtcNow);
 
         var next = previous with { Playback = playback };
 
@@ -589,17 +641,26 @@ public sealed class MediaControllerService : IMediaControllerService
         var playbackInfoShape = new MediaPropertyMapper.PlaybackInfoShape(
             Status: PlaybackStateToSmts(previous.Playback.State),
             Controls: new MediaPropertyMapper.ControlsShape(
-                CanPlay:       previous.Playback.Capabilities.CanPlay,
-                CanPause:      previous.Playback.Capabilities.CanPause,
-                CanStop:       previous.Playback.Capabilities.CanStop,
-                CanGoPrevious: previous.Playback.Capabilities.CanGoPrevious,
-                CanGoNext:     previous.Playback.Capabilities.CanGoNext,
-                CanSeek:       previous.Playback.Capabilities.CanSeek));
+                CanPlay:                 previous.Playback.Capabilities.CanPlay,
+                CanPause:                previous.Playback.Capabilities.CanPause,
+                CanStop:                 previous.Playback.Capabilities.CanStop,
+                CanGoPrevious:           previous.Playback.Capabilities.CanGoPrevious,
+                CanGoNext:               previous.Playback.Capabilities.CanGoNext,
+                CanSeek:                 previous.Playback.Capabilities.CanSeek,
+                CanChangeShuffle:        previous.Playback.Capabilities.CanChangeShuffle,
+                CanChangeAutoRepeatMode: previous.Playback.Capabilities.CanChangeAutoRepeatMode),
+            IsShuffleActive: previous.Playback.IsShuffleActive,
+            AutoRepeatMode:  previous.Playback.AutoRepeatMode switch
+            {
+                MediaAutoRepeatMode.Track => Windows.Media.MediaPlaybackAutoRepeatMode.Track,
+                MediaAutoRepeatMode.List  => Windows.Media.MediaPlaybackAutoRepeatMode.List,
+                _                         => Windows.Media.MediaPlaybackAutoRepeatMode.None,
+            });
 
         var playback = MediaPropertyMapper.BuildPlaybackSnapshot(
             playbackInfo: playbackInfoShape,
-            timeline: timelineShape,
-            capturedAt: timelineShape.LastUpdated);
+            timeline:     timelineShape,
+            capturedAt:   timelineShape.LastUpdated);
 
         var next = previous with { Playback = playback };
 

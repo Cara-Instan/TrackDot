@@ -276,4 +276,43 @@ public sealed class MediaPropertyMapperTests
         Assert.Equal(MediaPlaybackState.Playing, snapshot.Playback.State);
         Assert.Equal(TransportCapabilities.None, snapshot.Playback.Capabilities);
     }
+
+    [Theory]
+    [InlineData(Windows.Media.MediaPlaybackAutoRepeatMode.None, MediaAutoRepeatMode.None)]
+    [InlineData(Windows.Media.MediaPlaybackAutoRepeatMode.Track, MediaAutoRepeatMode.Track)]
+    [InlineData(Windows.Media.MediaPlaybackAutoRepeatMode.List, MediaAutoRepeatMode.List)]
+    [InlineData(null, MediaAutoRepeatMode.None)]
+    public void MapAutoRepeatMode_maps_winrt_enum_correctly(
+        Windows.Media.MediaPlaybackAutoRepeatMode? input, MediaAutoRepeatMode expected)
+    {
+        Assert.Equal(expected, MediaPropertyMapper.MapAutoRepeatMode(input));
+    }
+
+    [Fact]
+    public void BuildSnapshot_maps_shuffle_and_repeat_states()
+    {
+        var session = new MediaPropertyMapper.SessionShape("Spotify.exe");
+        var mediaProperties = new MediaPropertyMapper.MediaPropertiesShape("Song", "Artist", "Album");
+        var controls = new MediaPropertyMapper.ControlsShape(
+            CanPlay: true, CanPause: true, CanStop: false, CanGoPrevious: true, CanGoNext: true,
+            CanSeek: true, CanChangeShuffle: true, CanChangeAutoRepeatMode: true);
+        var playbackInfo = new MediaPropertyMapper.PlaybackInfoShape(
+            Status: GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing,
+            Controls: controls,
+            IsShuffleActive: true,
+            AutoRepeatMode: Windows.Media.MediaPlaybackAutoRepeatMode.Track);
+
+        var snapshot = MediaPropertyMapper.BuildSnapshot(
+            sessionShape: session,
+            mediaProperties: mediaProperties,
+            playbackInfo: playbackInfo,
+            timeline: null,
+            artwork: null,
+            capturedAt: DateTimeOffset.UtcNow);
+
+        Assert.True(snapshot.Playback.IsShuffleActive);
+        Assert.Equal(MediaAutoRepeatMode.Track, snapshot.Playback.AutoRepeatMode);
+        Assert.True(snapshot.Playback.Capabilities.CanChangeShuffle);
+        Assert.True(snapshot.Playback.Capabilities.CanChangeAutoRepeatMode);
+    }
 }

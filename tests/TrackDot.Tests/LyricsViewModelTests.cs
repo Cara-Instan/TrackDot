@@ -58,4 +58,37 @@ public class LyricsViewModelTests
 
         Assert.Equal(1, mediaSvc.SeekCallCount);
     }
+
+    [Fact]
+    public async Task ManualOffset_AdjustsAndResets_Correctly()
+    {
+        var mediaSvc = new FakeMediaControllerService();
+        var lyricsSvc = new FakeLyricsService();
+        var ticker = new FakeTicker();
+        var windowSettings = new WindowSettingsService(initialPinned: false, initialOpacity: 100, initialGlobalHotkeys: true, initialLyricsOpacity: 85);
+
+        using var vm = new LyricsViewModel(mediaSvc, lyricsSvc, ticker, windowSettings);
+
+        Assert.Equal(0.0, vm.ManualOffsetSeconds);
+        Assert.Equal("0.0s", vm.OffsetDisplay);
+        Assert.False(vm.HasNonZeroOffset);
+
+        vm.OffsetLaterCommand.Execute(null);
+        await Task.Yield();
+        Assert.Equal(0.5, vm.ManualOffsetSeconds);
+        Assert.Equal("+0.5s", vm.OffsetDisplay);
+        Assert.True(vm.HasNonZeroOffset);
+
+        vm.OffsetEarlierCommand.Execute(null);
+        await Task.Yield();
+        vm.OffsetEarlierCommand.Execute(null);
+        await Task.Yield();
+        Assert.Equal(-0.5, vm.ManualOffsetSeconds);
+        Assert.Equal("-0.5s", vm.OffsetDisplay);
+
+        vm.ResetOffsetCommand.Execute(null);
+        await Task.Yield();
+        Assert.Equal(0.0, vm.ManualOffsetSeconds);
+        Assert.Equal("0.0s", vm.OffsetDisplay);
+    }
 }

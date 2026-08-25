@@ -53,6 +53,13 @@ public class DwmInteropTests
     }
 
     [Fact]
+    public void TryApplySystemBackdrop_returns_false_for_Zero()
+    {
+        var result = new DwmInterop().TryApplySystemBackdrop(IntPtr.Zero);
+        Assert.False(result);
+    }
+
+    [Fact]
     public void TryApplyRoundedCorners_returns_one_of_valid_results_on_host()
     {
         // STA-hosted, real HWND. The DWM call's success depends on

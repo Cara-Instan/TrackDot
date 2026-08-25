@@ -34,6 +34,11 @@ public interface IDwmInterop
     DwmCornerApplyResult TryApplyRoundedCorners(IntPtr hwnd);
 
     /// <summary>
+    /// Attempts to apply a system backdrop (such as Acrylic = 3 or Mica = 2) on Windows 11 22H2+ (build 22621+).
+    /// </summary>
+    bool TryApplySystemBackdrop(IntPtr hwnd, int backdropType = 3);
+
+    /// <summary>
     /// Returns whether the host OS is Windows 11 22H2 (build 22621) or later,
     /// detected via <c>RtlGetVersion</c> rather than the shimmed
     /// <see cref="Environment.OSVersion"/>.

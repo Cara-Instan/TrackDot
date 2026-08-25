@@ -685,6 +685,79 @@ public sealed class MainViewModelTests
         Assert.Equal("Play", vm.PlayPauseToolTip);
     }
 
+    [Fact]
+    public async Task ToggleShuffleCommand_calls_service_when_media_present()
+    {
+        var (vm, svc, _, _) = BuildViewModel();
+        svc.Publish(MakeSnapshot(
+            state: MediaPlaybackState.Playing,
+            position: TimeSpan.Zero,
+            endTime: TimeSpan.FromMinutes(3),
+            caps: AllEnabled(),
+            title: "Song"));
+
+        Assert.True(vm.ToggleShuffleCommand.CanExecute(null));
+        vm.ToggleShuffleCommand.Execute(null);
+        await Task.Yield();
+
+        Assert.Equal(1, svc.ToggleShuffleCallCount);
+    }
+
+    [Fact]
+    public async Task CycleRepeatCommand_calls_service_when_media_present()
+    {
+        var (vm, svc, _, _) = BuildViewModel();
+        svc.Publish(MakeSnapshot(
+            state: MediaPlaybackState.Playing,
+            position: TimeSpan.Zero,
+            endTime: TimeSpan.FromMinutes(3),
+            caps: AllEnabled(),
+            title: "Song"));
+
+        Assert.True(vm.CycleRepeatCommand.CanExecute(null));
+        vm.CycleRepeatCommand.Execute(null);
+        await Task.Yield();
+
+        Assert.Equal(1, svc.CycleRepeatModeCallCount);
+    }
+
+    [Fact]
+    public void Shuffle_and_Repeat_properties_update_on_snapshot()
+    {
+        var (vm, svc, _, _) = BuildViewModel();
+        var caps = new TransportCapabilities(
+            CanPlay: true, CanPause: true, CanStop: true, CanGoPrevious: true, CanGoNext: true,
+            CanSeek: true, CanChangeShuffle: true, CanChangeAutoRepeatMode: true);
+
+        var snap = new MediaSessionSnapshot(
+            SourceAppUserModelId: "app",
+            Title: "Title",
+            Artist: "Artist",
+            AlbumTitle: "Album",
+            Artwork: null,
+            Playback: new PlaybackSnapshot(
+                State: MediaPlaybackState.Playing,
+                Position: TimeSpan.Zero,
+                StartTime: TimeSpan.Zero,
+                EndTime: TimeSpan.FromMinutes(4),
+                TimelineUpdatedAt: DateTimeOffset.UtcNow,
+                Capabilities: caps,
+                IsShuffleActive: true,
+                AutoRepeatMode: MediaAutoRepeatMode.Track));
+
+        svc.Publish(snap);
+
+        Assert.True(vm.IsShuffleActive);
+        Assert.True(vm.CanChangeShuffle);
+        Assert.Equal("Shuffle: On", vm.ShuffleToolTip);
+
+        Assert.Equal(MediaAutoRepeatMode.Track, vm.AutoRepeatMode);
+        Assert.True(vm.IsRepeatActive);
+        Assert.True(vm.IsRepeatTrack);
+        Assert.True(vm.CanChangeAutoRepeatMode);
+        Assert.Equal("Repeat: One track", vm.RepeatToolTip);
+    }
+
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------

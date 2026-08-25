@@ -113,6 +113,38 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    private double _manualOffsetSeconds = 0.0;
+
+    /// <summary>
+    /// Manual timing offset in seconds added to playback position when evaluating current lyric line.
+    /// Positive values make lyrics appear earlier; negative values delay lyrics.
+    /// </summary>
+    public double ManualOffsetSeconds
+    {
+        get => _manualOffsetSeconds;
+        set
+        {
+            var clamped = Math.Clamp(value, -10.0, 10.0);
+            if (Math.Abs(_manualOffsetSeconds - clamped) < 0.01) return;
+            _manualOffsetSeconds = clamped;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(OffsetDisplay));
+            OnPropertyChanged(nameof(HasNonZeroOffset));
+            UpdateActiveLine();
+        }
+    }
+
+    /// <summary>Formatted offset display, e.g. "+0.5s", "-1.0s", "0.0s".</summary>
+    public string OffsetDisplay => _manualOffsetSeconds switch
+    {
+        > 0.001 => $"+{_manualOffsetSeconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}s",
+        < -0.001 => $"{_manualOffsetSeconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}s",
+        _ => "0.0s"
+    };
+
+    /// <summary>True when a non-zero manual offset is active.</summary>
+    public bool HasNonZeroOffset => Math.Abs(_manualOffsetSeconds) > 0.01;
+
     public double BaseFontSize => Math.Clamp(_windowHeight / 22.0, 14.0, 48.0);
     public double ActiveFontSize => BaseFontSize * 1.3;
     public double RubyFontSize => Math.Max(10.0, BaseFontSize * 0.55);
@@ -120,6 +152,9 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
     public AsyncRelayCommand ToggleFuriganaCommand { get; }
     public AsyncRelayCommand ToggleTopmostCommand { get; }
     public AsyncRelayCommand<LyricLine> SeekToLineCommand { get; }
+    public AsyncRelayCommand OffsetEarlierCommand { get; }
+    public AsyncRelayCommand OffsetLaterCommand { get; }
+    public AsyncRelayCommand ResetOffsetCommand { get; }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -135,6 +170,27 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
         _ticker = ticker ?? throw new ArgumentNullException(nameof(ticker));
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
+
+        OffsetEarlierCommand = new AsyncRelayCommand(
+            execute: () =>
+            {
+                ManualOffsetSeconds -= 0.5;
+                return Task.CompletedTask;
+            });
+
+        OffsetLaterCommand = new AsyncRelayCommand(
+            execute: () =>
+            {
+                ManualOffsetSeconds += 0.5;
+                return Task.CompletedTask;
+            });
+
+        ResetOffsetCommand = new AsyncRelayCommand(
+            execute: () =>
+            {
+                ManualOffsetSeconds = 0.0;
+                return Task.CompletedTask;
+            });
 
         ToggleFuriganaCommand = new AsyncRelayCommand(
             execute: () =>
@@ -276,10 +332,12 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
             positionSec = interpolated.TotalSeconds;
         }
 
+        double effectivePositionSec = positionSec + _manualOffsetSeconds;
+
         int foundIndex = -1;
         for (int i = 0; i < _lines.Count; i++)
         {
-            if (_lines[i].Timestamp.TotalSeconds <= positionSec)
+            if (_lines[i].Timestamp.TotalSeconds <= effectivePositionSec)
             {
                 foundIndex = i;
             }
