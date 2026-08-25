@@ -153,9 +153,9 @@
                         Minimum="0"
                         Maximum="{Binding DurationSeconds, Mode=OneWay}"
                         Value="{Binding PositionSeconds, Mode=OneWay}"
-                        Height="4"
                         IsMoveToPointEnabled="True"
                         IsEnabled="{Binding CanSeek}"
+                        PreviewMouseLeftButtonDown="SeekSlider_PreviewMouseLeftButtonDown"
                         PreviewMouseLeftButtonUp="SeekSlider_MouseLeftButtonUp"
                         Style="{StaticResource SeekSliderStyle}"
                         AutomationProperties.Name="Track progress" />
@@ -254,7 +254,8 @@
             <!-- Volume / Mute Row (only shown when a media session is active) -->
             <Grid Grid.Row="4"
                   Margin="0,10,0,2"
-                  Visibility="{Binding HasMedia, Converter={StaticResource BoolToVis}}">
+                  Visibility="{Binding HasMedia, Converter={StaticResource BoolToVis}}"
+                  ToolTip="It will decrease/increase audio volume on System&gt;Sound&gt;Volume Mixer&gt;Apps">
                 <Grid.ColumnDefinitions>
                     <!-- Mute toggle -->
                     <ColumnDefinition Width="32" />
@@ -281,13 +282,14 @@
                         Minimum="0"
                         Maximum="100"
                         Value="{Binding VolumePercent, Mode=OneWay}"
-                        Height="3"
                         Margin="4,0"
                         IsMoveToPointEnabled="True"
                         IsEnabled="{Binding HasMedia}"
+                        ValueChanged="VolumeSlider_ValueChanged"
                         PreviewMouseLeftButtonUp="VolumeSlider_MouseLeftButtonUp"
                         PreviewMouseWheel="VolumeSlider_MouseWheel"
                         Style="{StaticResource VolumeSliderStyle}"
+                        ToolTip="It will decrease/increase audio volume on System&gt;Sound&gt;Volume Mixer&gt;Apps"
                         AutomationProperties.Name="Volume" />
 
                 <!-- Volume % Label -->

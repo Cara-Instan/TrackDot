@@ -267,7 +267,7 @@
                         Minimum="20" Maximum="100"
                         Value="{Binding OpacityPercent, Mode=TwoWay}"
                         IsMoveToPointEnabled="True"
-                        Height="3" VerticalAlignment="Center"
+                        VerticalAlignment="Center"
                         Style="{StaticResource VolumeSliderStyle}" />
                 <TextBlock Grid.Column="2"
                            Text="{Binding OpacityPercent, StringFormat='{}{0:0}%'}"

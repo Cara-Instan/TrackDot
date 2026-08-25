@@ -182,12 +182,32 @@ public partial class MainWindow : Window, IPopoverHost
             DragMove();
     }
 
+    private bool _isUserSeeking;
+
+    private void SeekSlider_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _isUserSeeking = true;
+    }
+
     private void SeekSlider_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (!_isUserSeeking) return;
+        _isUserSeeking = false;
         if (sender is not System.Windows.Controls.Slider slider) return;
         if (_viewModel?.SeekCommand is not { } cmd) return;
         if (cmd.CanExecute(slider.Value))
             cmd.Execute(slider.Value);
+    }
+
+    private void VolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (sender is not System.Windows.Controls.Slider slider) return;
+        if (_viewModel?.SetVolumeCommand is not { } cmd) return;
+        if (slider.IsMouseCaptureWithin || (slider.IsMouseOver && Mouse.LeftButton == MouseButtonState.Pressed))
+        {
+            if (cmd.CanExecute(e.NewValue))
+                cmd.Execute(e.NewValue);
+        }
     }
 
     private void VolumeSlider_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)

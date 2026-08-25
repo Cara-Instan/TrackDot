@@ -224,7 +224,44 @@
             </Setter>
         </Style>
 
-        <!-- Volume Slider Style (thinner track, no thumb, same accent fill as SeekSlider) -->
+        <!-- Shared Slider Thumb Style -->
+        <Style x:Key="SliderThumbStyle" TargetType="Thumb">
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Grid Background="Transparent" Width="14" Height="14">
+                            <Ellipse x:Name="Grip"
+                                     Width="10"
+                                     Height="10"
+                                     Fill="{DynamicResource AccentBrush}"
+                                     HorizontalAlignment="Center"
+                                     VerticalAlignment="Center" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Grip" Property="Width" Value="12" />
+                                <Setter TargetName="Grip" Property="Height" Value="12" />
+                                <Setter TargetName="Grip" Property="Fill" Value="{DynamicResource AccentHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="Grip" Property="Width" Value="12" />
+                                <Setter TargetName="Grip" Property="Height" Value="12" />
+                                <Setter TargetName="Grip" Property="Fill" Value="{DynamicResource AccentPressedBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Grip" Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Volume Slider Style (thinner track, interactive thumb, accent fill) -->
         <Style x:Key="VolumeSliderStyle" TargetType="Slider">
             <Setter Property="Background" Value="{DynamicResource ProgressTrackBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
@@ -232,11 +269,11 @@
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="IsMoveToPointEnabled" Value="True" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Slider">
-                        <Grid>
-                            <Border Height="14" Background="Transparent" />
+                        <Grid Height="18" Background="Transparent">
                             <Border x:Name="TrackBg"
                                     Height="3"
                                     Background="{TemplateBinding Background}"
@@ -263,7 +300,7 @@
                             </Border>
                             <Track x:Name="PART_Track">
                                 <Track.Thumb>
-                                    <Thumb x:Name="Thumb" Width="0" Height="0" Opacity="0" />
+                                    <Thumb Style="{StaticResource SliderThumbStyle}" />
                                 </Track.Thumb>
                             </Track>
                         </Grid>
@@ -284,12 +321,12 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="IsMoveToPointEnabled" Value="True" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Slider">
-                        <Grid>
-                            <!-- Expanded transparent hit-test region (easier to grab) -->
-                            <Border Height="16" Background="Transparent" />
+                        <Grid Height="18" Background="Transparent">
                             <!-- Track background -->
                             <Border x:Name="TrackBg"
                                     Height="4"
@@ -316,10 +353,9 @@
                                     </MultiBinding>
                                 </Border.Width>
                             </Border>
-                            <!-- Invisible thumb required by Slider for drag-to-seek -->
                             <Track x:Name="PART_Track">
                                 <Track.Thumb>
-                                    <Thumb x:Name="Thumb" Width="0" Height="0" Opacity="0" />
+                                    <Thumb Style="{StaticResource SliderThumbStyle}" />
                                 </Track.Thumb>
                             </Track>
                         </Grid>
