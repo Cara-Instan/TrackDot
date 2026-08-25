@@ -255,6 +255,7 @@ public partial class MainWindow : Window, IPopoverHost
     private Action? _onOpenAbout;
     private Action? _onOpenHotkeys;
     private Action? _onOpenLyrics;
+    private Action? _onOpenLyricsHud;
     private IWindowSettingsService? _windowSettingsService;
 
     /// <summary>
@@ -263,19 +264,21 @@ public partial class MainWindow : Window, IPopoverHost
     public bool IsPinned { get; private set; }
 
     /// <summary>
-    /// Wires header action handlers (Settings, About, Hotkeys, Lyrics) and window settings service.
+    /// Wires header action handlers (Settings, About, Hotkeys, Lyrics, HUD) and window settings service.
     /// </summary>
     public void SetHeaderActions(
         Action? onOpenSettings,
         Action? onOpenAbout,
         Action? onOpenHotkeys,
         Action? onOpenLyrics = null,
+        Action? onOpenLyricsHud = null,
         IWindowSettingsService? windowSettingsService = null)
     {
         _onOpenSettings = onOpenSettings;
         _onOpenAbout = onOpenAbout;
         _onOpenHotkeys = onOpenHotkeys;
         _onOpenLyrics = onOpenLyrics;
+        _onOpenLyricsHud = onOpenLyricsHud;
 
         if (_windowSettingsService != null)
         {
@@ -331,6 +334,11 @@ public partial class MainWindow : Window, IPopoverHost
     private void OnLyricsClicked(object sender, RoutedEventArgs e)
     {
         _onOpenLyrics?.Invoke();
+    }
+
+    private void OnLyricsHudClicked(object sender, RoutedEventArgs e)
+    {
+        _onOpenLyricsHud?.Invoke();
     }
 
     private void OnHotkeysClicked(object sender, RoutedEventArgs e)

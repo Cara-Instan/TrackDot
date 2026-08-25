@@ -13,7 +13,8 @@ namespace TrackDot.ViewModels;
 /// <summary>
 /// ViewModel for the resizable, sticky lyrics window.
 /// Manages lyric fetching, line-syncing with media playback,
-/// furigana toggle, font scaling, and persistence settings.
+/// furigana toggle, dual-language translation, font scaling,
+/// manual search, local file imports, and persistence settings.
 /// </summary>
 public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
 {
@@ -24,6 +25,7 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
     private readonly Func<DateTimeOffset> _clock;
 
     private CancellationTokenSource? _fetchCts;
+    private CancellationTokenSource? _searchCts;
     private IReadOnlyList<LyricLine> _lines = Array.Empty<LyricLine>();
     private int _activeLineIndex = -1;
     private bool _isLoading;
@@ -33,6 +35,11 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
     private System.Windows.Media.Color? _dominantArtworkColor;
     private System.Windows.Media.SolidColorBrush? _dynamicAccentBrush;
     private System.Windows.Media.RadialGradientBrush? _artworkAmbientGlowBrush;
+
+    private bool _isSearchPanelOpen;
+    private string _searchQuery = string.Empty;
+    private bool _isSearching;
+    private IReadOnlyList<LyricsSearchResult> _searchResults = Array.Empty<LyricsSearchResult>();
 
     public IReadOnlyList<LyricLine> Lines
     {
@@ -55,11 +62,15 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
             _activeLineIndex = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(ActiveLine));
+            OnPropertyChanged(nameof(ActiveNextLine));
         }
     }
 
     public LyricLine? ActiveLine =>
         _activeLineIndex >= 0 && _activeLineIndex < _lines.Count ? _lines[_activeLineIndex] : null;
+
+    public LyricLine? ActiveNextLine =>
+        _activeLineIndex + 1 >= 0 && _activeLineIndex + 1 < _lines.Count ? _lines[_activeLineIndex + 1] : null;
 
     public bool IsLoading
     {
@@ -104,6 +115,17 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
         {
             if (_settingsService.LyricsIsFuriganaVisible == value) return;
             _settingsService.LyricsIsFuriganaVisible = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsTranslationVisible
+    {
+        get => _settingsService.LyricsShowTranslation;
+        set
+        {
+            if (_settingsService.LyricsShowTranslation == value) return;
+            _settingsService.LyricsShowTranslation = value;
             OnPropertyChanged();
         }
     }
@@ -169,12 +191,68 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
     public double ActiveFontSize => BaseFontSize * 1.3;
     public double RubyFontSize => Math.Max(10.0, BaseFontSize * 0.55);
 
+    #region Search Panel State
+    public bool IsSearchPanelOpen
+    {
+        get => _isSearchPanelOpen;
+        set
+        {
+            if (_isSearchPanelOpen == value) return;
+            _isSearchPanelOpen = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string SearchQuery
+    {
+        get => _searchQuery;
+        set
+        {
+            if (_searchQuery == value) return;
+            _searchQuery = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsSearching
+    {
+        get => _isSearching;
+        private set
+        {
+            if (_isSearching == value) return;
+            _isSearching = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public IReadOnlyList<LyricsSearchResult> SearchResults
+    {
+        get => _searchResults;
+        private set
+        {
+            if (ReferenceEquals(_searchResults, value)) return;
+            _searchResults = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasSearchResults));
+        }
+    }
+
+    public bool HasSearchResults => _searchResults.Count > 0;
+    #endregion
+
     public AsyncRelayCommand ToggleFuriganaCommand { get; }
+    public AsyncRelayCommand ToggleTranslationCommand { get; }
     public AsyncRelayCommand ToggleTopmostCommand { get; }
     public AsyncRelayCommand<LyricLine> SeekToLineCommand { get; }
     public AsyncRelayCommand OffsetEarlierCommand { get; }
     public AsyncRelayCommand OffsetLaterCommand { get; }
     public AsyncRelayCommand ResetOffsetCommand { get; }
+
+    public AsyncRelayCommand OpenSearchPanelCommand { get; }
+    public AsyncRelayCommand CloseSearchPanelCommand { get; }
+    public AsyncRelayCommand SearchLyricsCommand { get; }
+    public AsyncRelayCommand<LyricsSearchResult> SelectSearchResultCommand { get; }
+    public AsyncRelayCommand LoadLrcFileCommand { get; }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -219,6 +297,13 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
                 return Task.CompletedTask;
             });
 
+        ToggleTranslationCommand = new AsyncRelayCommand(
+            execute: () =>
+            {
+                IsTranslationVisible = !IsTranslationVisible;
+                return Task.CompletedTask;
+            });
+
         ToggleTopmostCommand = new AsyncRelayCommand(
             execute: () =>
             {
@@ -233,6 +318,55 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
                 {
                     await _mediaService.SeekAsync(line.Timestamp.TotalSeconds).ConfigureAwait(false);
                 }
+            });
+
+        OpenSearchPanelCommand = new AsyncRelayCommand(
+            execute: () =>
+            {
+                SearchQuery = $"{_mediaService.Current.Title} {_mediaService.Current.Artist}".Trim();
+                IsSearchPanelOpen = true;
+                return SearchLyricsInternalAsync();
+            });
+
+        CloseSearchPanelCommand = new AsyncRelayCommand(
+            execute: () =>
+            {
+                IsSearchPanelOpen = false;
+                return Task.CompletedTask;
+            });
+
+        SearchLyricsCommand = new AsyncRelayCommand(
+            execute: SearchLyricsInternalAsync);
+
+        SelectSearchResultCommand = new AsyncRelayCommand<LyricsSearchResult>(
+            execute: async candidate =>
+            {
+                if (candidate == null) return;
+                await ApplySearchResultAsync(candidate).ConfigureAwait(false);
+            });
+
+        LoadLrcFileCommand = new AsyncRelayCommand(
+            execute: () =>
+            {
+                var dialog = new Microsoft.Win32.OpenFileDialog
+                {
+                    Filter = "Lyric files (*.lrc;*.ttml;*.txt)|*.lrc;*.ttml;*.txt|All files (*.*)|*.*",
+                    Title = "Open Lyrics File"
+                };
+
+                if (dialog.ShowDialog() == true)
+                {
+                    try
+                    {
+                        string content = System.IO.File.ReadAllText(dialog.FileName);
+                        return LoadCustomLyricsAsync(content);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[LyricsViewModel] File read error: {ex.Message}");
+                    }
+                }
+                return Task.CompletedTask;
             });
 
         _mediaService.SnapshotChanged += OnMediaSnapshotChanged;
@@ -250,6 +384,101 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(BaseFontSize));
         OnPropertyChanged(nameof(ActiveFontSize));
         OnPropertyChanged(nameof(RubyFontSize));
+    }
+
+    public async Task LoadCustomLyricsAsync(string rawContent, string? format = null)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(rawContent)) return;
+
+        IsLoading = true;
+        try
+        {
+            var parsed = await _lyricsService.ParseCustomLyricsAsync(rawContent, format).ConfigureAwait(true);
+            if (parsed != null && parsed.Count > 0)
+            {
+                Lines = parsed;
+                var snapshot = _mediaService.Current;
+                if (!string.IsNullOrWhiteSpace(snapshot.Title))
+                {
+                    _lyricsService.SaveLyricsToCache(snapshot.Title, snapshot.Artist, snapshot.AlbumTitle, parsed);
+                }
+                IsLoading = false;
+                IsSearchPanelOpen = false;
+                UpdateActiveLine();
+            }
+            else
+            {
+                IsLoading = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LyricsViewModel] Custom lyrics error: {ex.Message}");
+            IsLoading = false;
+        }
+    }
+
+    private async Task SearchLyricsInternalAsync()
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(SearchQuery)) return;
+
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _searchCts = cts;
+
+        IsSearching = true;
+        try
+        {
+            var results = await _lyricsService.SearchCandidatesAsync(SearchQuery, cts.Token).ConfigureAwait(true);
+            if (!cts.Token.IsCancellationRequested)
+            {
+                SearchResults = results;
+                IsSearching = false;
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LyricsViewModel] Search error: {ex.Message}");
+            if (!cts.Token.IsCancellationRequested)
+            {
+                SearchResults = Array.Empty<LyricsSearchResult>();
+                IsSearching = false;
+            }
+        }
+    }
+
+    private async Task ApplySearchResultAsync(LyricsSearchResult candidate)
+    {
+        if (_disposed || candidate == null) return;
+
+        IsLoading = true;
+        try
+        {
+            var parsed = await _lyricsService.FetchLyricsByResultAsync(candidate).ConfigureAwait(true);
+            if (parsed != null && parsed.Count > 0)
+            {
+                Lines = parsed;
+                var snapshot = _mediaService.Current;
+                if (!string.IsNullOrWhiteSpace(snapshot.Title))
+                {
+                    _lyricsService.SaveLyricsToCache(snapshot.Title, snapshot.Artist, snapshot.AlbumTitle, parsed);
+                }
+                IsLoading = false;
+                IsSearchPanelOpen = false;
+                UpdateActiveLine();
+            }
+            else
+            {
+                IsLoading = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LyricsViewModel] Apply candidate error: {ex.Message}");
+            IsLoading = false;
+        }
     }
 
     private void OnMediaSnapshotChanged(object? sender, MediaSessionSnapshot snapshot)
@@ -274,6 +503,7 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
     {
         if (_disposed) return;
         OnPropertyChanged(nameof(IsFuriganaVisible));
+        OnPropertyChanged(nameof(IsTranslationVisible));
         OnPropertyChanged(nameof(OpacityPercent));
         OnPropertyChanged(nameof(WindowOpacity));
         OnPropertyChanged(nameof(IsTopmost));
@@ -321,7 +551,7 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(HasDynamicAccent));
     }
 
-    private async Task LoadLyricsForCurrentTrackAsync()
+    public async Task LoadLyricsForCurrentTrackAsync()
     {
         if (_disposed) return;
 
@@ -426,7 +656,10 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
         _ticker.Stop();
         _fetchCts?.Cancel();
         _fetchCts?.Dispose();
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
         _mediaService.SnapshotChanged -= OnMediaSnapshotChanged;
         _settingsService.SettingsChanged -= OnSettingsChanged;
     }
 }
+

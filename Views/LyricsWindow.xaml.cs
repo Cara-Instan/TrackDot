@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -16,6 +17,7 @@ public partial class LyricsWindow : Window
 {
     private LyricsViewModel? _viewModel;
     private IWindowSettingsService? _settingsService;
+    private Action? _onToggleHud;
     private bool _isShuttingDown;
     private bool _isLoaded;
     private readonly IDwmInterop _dwm = new DwmInterop();
@@ -25,13 +27,14 @@ public partial class LyricsWindow : Window
         InitializeComponent();
     }
 
-    public void SetViewModel(LyricsViewModel viewModel, IWindowSettingsService settingsService)
+    public void SetViewModel(LyricsViewModel viewModel, IWindowSettingsService settingsService, Action? onToggleHud = null)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         ArgumentNullException.ThrowIfNull(settingsService);
 
         _viewModel = viewModel;
         _settingsService = settingsService;
+        _onToggleHud = onToggleHud;
         DataContext = viewModel;
 
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
@@ -90,8 +93,7 @@ public partial class LyricsWindow : Window
         }
 
         // Migrate from layered-alpha HWND to opaque HWND with DWM
-        // rounded corners on Win11 22H2+. See MainWindow.OnSourceInitialized
-        // for the full rationale.
+        // rounded corners on Win11 22H2+.
         var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
         if (_dwm.TryApplyRoundedCorners(hwnd) == DwmCornerApplyResult.Applied)
         {
@@ -119,11 +121,6 @@ public partial class LyricsWindow : Window
                 // Ignore if mouse button was released before DragMove initialized
             }
         }
-    }
-
-    private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        Window_MouseLeftButtonDown(sender, e);
     }
 
     private static bool IsInteractiveControl(DependencyObject source)
@@ -181,6 +178,48 @@ public partial class LyricsWindow : Window
         HideLyrics();
     }
 
+    private void OnToggleHudClicked(object sender, RoutedEventArgs e)
+    {
+        _onToggleHud?.Invoke();
+    }
+
+    private void Window_DragOver(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            e.Effects = DragDropEffects.Copy;
+            e.Handled = true;
+        }
+        else
+        {
+            e.Effects = DragDropEffects.None;
+        }
+    }
+
+    private void Window_Drop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            var files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            if (files != null && files.Length > 0)
+            {
+                string filePath = files[0];
+                if (File.Exists(filePath))
+                {
+                    try
+                    {
+                        string content = File.ReadAllText(filePath);
+                        _ = _viewModel?.LoadCustomLyricsAsync(content);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[LyricsWindow] Drop file error: {ex.Message}");
+                    }
+                }
+            }
+        }
+    }
+
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(LyricsViewModel.ActiveLineIndex))
@@ -228,6 +267,13 @@ public partial class LyricsWindow : Window
     {
         if (e.Key == Key.Escape)
         {
+            if (_viewModel?.IsSearchPanelOpen == true)
+            {
+                _viewModel.IsSearchPanelOpen = false;
+                e.Handled = true;
+                return;
+            }
+
             HideLyrics();
             e.Handled = true;
         }
@@ -265,3 +311,4 @@ public static class ScrollViewerBehavior
         }
     }
 }
+

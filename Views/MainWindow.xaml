@@ -131,6 +131,16 @@
                               Width="13" Height="13" Stretch="Uniform" />
                     </Button>
 
+                    <!-- Floating Lyrics HUD Button -->
+                    <Button Style="{StaticResource HeaderActionButton}"
+                            Click="OnLyricsHudClicked"
+                            ToolTip="Lyrics HUD / Subtitle Mode"
+                            AutomationProperties.Name="Lyrics HUD">
+                        <Path Data="M 21,3 H 3 C 1.9,3 1,3.9 1,5 V 17 C 1,18.1 1.9,19 3,19 H 8 V 21 H 16 V 19 H 21 C 22.1,19 23,18.1 23,17 V 5 C 23,3.9 22.1,3 21,3 M 21,17 H 3 V 5 H 21 V 17 M 6,12 H 10 V 14 H 6 V 12 M 12,12 H 18 V 14 H 12 V 12 Z"
+                              Fill="{DynamicResource MutedBrush}"
+                              Width="13" Height="13" Stretch="Uniform" />
+                    </Button>
+
                     <!-- Keyboard Shortcuts Button -->
                     <Button Style="{StaticResource HeaderActionButton}"
                             Click="OnHotkeysClicked"

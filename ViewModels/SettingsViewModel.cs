@@ -128,6 +128,79 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>
+    /// True when translated/secondary lyric lines are shown.
+    /// </summary>
+    public bool LyricsShowTranslation
+    {
+        get => _windowSettings?.LyricsShowTranslation ?? true;
+        set
+        {
+            if (_windowSettings == null || _windowSettings.LyricsShowTranslation == value) return;
+            _windowSettings.LyricsShowTranslation = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// True when floating HUD is visible.
+    /// </summary>
+    public bool LyricsHudVisible
+    {
+        get => _windowSettings?.LyricsHudVisible ?? false;
+        set
+        {
+            if (_windowSettings == null || _windowSettings.LyricsHudVisible == value) return;
+            _windowSettings.LyricsHudVisible = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// True when floating HUD is locked in click-through mode.
+    /// </summary>
+    public bool LyricsHudIsLocked
+    {
+        get => _windowSettings?.LyricsHudIsLocked ?? false;
+        set
+        {
+            if (_windowSettings == null || _windowSettings.LyricsHudIsLocked == value) return;
+            _windowSettings.LyricsHudIsLocked = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Lyrics HUD opacity percentage [20-100].
+    /// </summary>
+    public int LyricsHudOpacityPercent
+    {
+        get => _windowSettings?.LyricsHudOpacityPercent ?? 90;
+        set
+        {
+            if (_windowSettings == null || _windowSettings.LyricsHudOpacityPercent == value) return;
+            _windowSettings.LyricsHudOpacityPercent = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(LyricsHudOpacityDisplayText));
+        }
+    }
+
+    public string LyricsHudOpacityDisplayText => $"{LyricsHudOpacityPercent}%";
+
+    /// <summary>
+    /// Lyrics HUD font size in pixels [14-60].
+    /// </summary>
+    public double LyricsHudFontSize
+    {
+        get => _windowSettings?.LyricsHudFontSize ?? 22.0;
+        set
+        {
+            if (_windowSettings == null || Math.Abs(_windowSettings.LyricsHudFontSize - value) < 0.1) return;
+            _windowSettings.LyricsHudFontSize = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
     /// Configurable list of global hotkey items.
     /// </summary>
     public System.Collections.ObjectModel.ObservableCollection<HotkeySettingItemViewModel> HotkeyItems { get; } = new();

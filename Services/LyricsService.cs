@@ -48,7 +48,7 @@ public class LyricsService : ILyricsService
     public LyricsService(HttpClient? httpClient = null)
     {
         _httpClient = httpClient ?? new HttpClient();
-        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("TrackDot/0.1.0 (https://github.com/herlandroando/TrackDot)");
+        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("TrackDot/0.3.0 (https://github.com/herlandroando/TrackDot)");
     }
 
     /// <inheritdoc/>
@@ -104,7 +104,128 @@ public class LyricsService : ILyricsService
         }
     }
 
-    private async Task<List<(TimeSpan timestamp, string text)>?> FetchFromUnisonAsync(
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<LyricsSearchResult>> SearchCandidatesAsync(
+        string query,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return Array.Empty<LyricsSearchResult>();
+
+        string searchUrl = $"https://lrclib.net/api/search?q={Uri.EscapeDataString(query.Trim())}";
+        try
+        {
+            using var response = await _httpClient.GetAsync(searchUrl, cancellationToken).ConfigureAwait(false);
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                var searchResults = JsonSerializer.Deserialize<List<LrclibResponseDto>>(content, JsonOptions);
+                if (searchResults != null)
+                {
+                    var results = new List<LyricsSearchResult>(searchResults.Count);
+                    foreach (var item in searchResults)
+                    {
+                        bool hasSynced = !string.IsNullOrWhiteSpace(item.SyncedLyrics);
+                        bool hasPlain = !string.IsNullOrWhiteSpace(item.PlainLyrics);
+                        if (!hasSynced && !hasPlain) continue;
+
+                        TimeSpan? dur = item.Duration.HasValue && item.Duration.Value > 0
+                            ? TimeSpan.FromSeconds(item.Duration.Value)
+                            : null;
+
+                        results.Add(new LyricsSearchResult(
+                            Id: item.Id,
+                            TrackName: item.TrackName ?? "Unknown Track",
+                            ArtistName: item.ArtistName ?? "Unknown Artist",
+                            AlbumName: item.AlbumName,
+                            Duration: dur,
+                            HasSyncedLyrics: hasSynced,
+                            HasPlainLyrics: hasPlain,
+                            Source: "LRCLIB",
+                            RawSyncedLyrics: item.SyncedLyrics,
+                            RawPlainLyrics: item.PlainLyrics));
+                    }
+                    return results;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LyricsService] Search error: {ex.Message}");
+        }
+
+        return Array.Empty<LyricsSearchResult>();
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<LyricLine>> FetchLyricsByResultAsync(
+        LyricsSearchResult result,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        string? synced = result.RawSyncedLyrics;
+        string? plain = result.RawPlainLyrics;
+
+        if (string.IsNullOrWhiteSpace(synced) && string.IsNullOrWhiteSpace(plain) && result.Id.HasValue)
+        {
+            try
+            {
+                string getUrl = $"https://lrclib.net/api/get/{result.Id.Value}";
+                using var response = await _httpClient.GetAsync(getUrl, cancellationToken).ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                    var dto = JsonSerializer.Deserialize<LrclibResponseDto>(content, JsonOptions);
+                    if (dto != null)
+                    {
+                        synced = dto.SyncedLyrics;
+                        plain = dto.PlainLyrics;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LyricsService] FetchByResult get error: {ex.Message}");
+            }
+        }
+
+        var dtoMock = new LrclibResponseDto(
+            Id: result.Id,
+            SyncedLyrics: synced,
+            PlainLyrics: plain,
+            TrackName: result.TrackName,
+            ArtistName: result.ArtistName,
+            AlbumName: result.AlbumName,
+            Duration: result.Duration?.TotalSeconds);
+
+        var rawLines = ExtractLrclibRawLines(dtoMock);
+        return await ConvertRawLinesToLyricLinesAsync(rawLines, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<LyricLine>> ParseCustomLyricsAsync(
+        string rawContent,
+        string? format = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(rawContent)) return Array.Empty<LyricLine>();
+        var rawLines = ParseRawLyrics(rawContent, format);
+        return await ConvertRawLinesToLyricLinesAsync(rawLines, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public void SaveLyricsToCache(
+        string title,
+        string artist,
+        string album,
+        IReadOnlyList<LyricLine> lyrics)
+    {
+        if (string.IsNullOrWhiteSpace(title) || lyrics == null) return;
+        string cacheKey = $"{artist.Trim()} - {title.Trim()} - {album.Trim()}";
+        _cache[cacheKey] = lyrics;
+    }
+
+    private async Task<List<RawLyricItem>?> FetchFromUnisonAsync(
         string title, string artist, string album, TimeSpan duration, CancellationToken ct)
     {
         string url = $"https://unison.boidu.dev/lyrics?song={Uri.EscapeDataString(title)}&artist={Uri.EscapeDataString(artist)}";
@@ -250,7 +371,7 @@ public class LyricsService : ILyricsService
             $"[LyricsService]   {label} track='{dto.TrackName}' artist='{dto.ArtistName}' duration={dto.Duration}s synced={(hasSynced ? $"yes({syncedLineCount} lines)" : "no")} plain={(hasPlain ? $"yes({plainLineCount} lines)" : "no")}");
     }
 
-    internal static List<(TimeSpan timestamp, string text)> ExtractLrclibRawLines(LrclibResponseDto dto)
+    internal static List<RawLyricItem> ExtractLrclibRawLines(LrclibResponseDto dto)
     {
         if (!string.IsNullOrWhiteSpace(dto.SyncedLyrics))
         {
@@ -259,25 +380,25 @@ public class LyricsService : ILyricsService
 
         if (!string.IsNullOrWhiteSpace(dto.PlainLyrics))
         {
-            var rawLines = new List<(TimeSpan timestamp, string text)>();
+            var rawLines = new List<RawLyricItem>();
             var plain = dto.PlainLyrics.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
             for (int i = 0; i < plain.Length; i++)
             {
                 var lineText = plain[i].Trim();
                 if (!string.IsNullOrEmpty(lineText))
                 {
-                    rawLines.Add((TimeSpan.Zero, lineText));
+                    rawLines.Add(new RawLyricItem(TimeSpan.Zero, lineText));
                 }
             }
             return rawLines;
         }
 
-        return new List<(TimeSpan timestamp, string text)>();
+        return new List<RawLyricItem>();
     }
 
-    internal static List<(TimeSpan timestamp, string text)> ParseRawLyrics(string lyrics, string? format = null)
+    internal static List<RawLyricItem> ParseRawLyrics(string lyrics, string? format = null)
     {
-        if (string.IsNullOrWhiteSpace(lyrics)) return new List<(TimeSpan, string)>();
+        if (string.IsNullOrWhiteSpace(lyrics)) return new List<RawLyricItem>();
 
         if (string.Equals(format, "ttml", StringComparison.OrdinalIgnoreCase) ||
             (lyrics.Contains("<tt", StringComparison.OrdinalIgnoreCase) && lyrics.Contains("</tt>", StringComparison.OrdinalIgnoreCase)))
@@ -292,23 +413,23 @@ public class LyricsService : ILyricsService
             if (lrcResult.Count > 0) return lrcResult;
         }
 
-        var result = new List<(TimeSpan timestamp, string text)>();
+        var result = new List<RawLyricItem>();
         var plain = lyrics.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
         foreach (var line in plain)
         {
             var lineText = line.Trim();
             if (!string.IsNullOrEmpty(lineText))
             {
-                result.Add((TimeSpan.Zero, lineText));
+                result.Add(new RawLyricItem(TimeSpan.Zero, lineText));
             }
         }
         return result;
     }
 
-    internal static List<(TimeSpan timestamp, string text)> ParseTtml(string ttmlContent)
+    internal static List<RawLyricItem> ParseTtml(string ttmlContent)
     {
-        var result = new List<(TimeSpan timestamp, string text)>();
-        if (string.IsNullOrWhiteSpace(ttmlContent)) return result;
+        var rawMatches = new List<RawLyricItem>();
+        if (string.IsNullOrWhiteSpace(ttmlContent)) return rawMatches;
 
         var matches = TtmlParagraphRegex.Matches(ttmlContent);
         foreach (Match match in matches)
@@ -323,12 +444,12 @@ public class LyricsService : ILyricsService
 
             if (!string.IsNullOrEmpty(text))
             {
-                result.Add((timestamp, text));
+                rawMatches.Add(new RawLyricItem(timestamp, text));
             }
         }
 
-        result.Sort((a, b) => a.timestamp.CompareTo(b.timestamp));
-        return result;
+        rawMatches.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+        return MergeConsecutiveBilingualLines(rawMatches);
     }
 
     internal static TimeSpan ParseTimestamp(string timeStr)
@@ -373,14 +494,16 @@ public class LyricsService : ILyricsService
     }
 
     private async Task<IReadOnlyList<LyricLine>> ConvertRawLinesToLyricLinesAsync(
-        IReadOnlyList<(TimeSpan timestamp, string text)> rawLines, CancellationToken ct)
+        IReadOnlyList<RawLyricItem> rawLines, CancellationToken ct)
     {
         var result = new List<LyricLine>(rawLines.Count);
         int index = 0;
 
-        foreach (var (timestamp, text) in rawLines)
+        foreach (var item in rawLines)
         {
             ct.ThrowIfCancellationRequested();
+            string text = item.Text;
+            string? translation = item.Translation;
             string romaji = text;
             var segments = new List<FuriganaSegment>();
 
@@ -404,18 +527,19 @@ public class LyricsService : ILyricsService
 
             result.Add(new LyricLine(
                 Index: index++,
-                Timestamp: timestamp,
+                Timestamp: item.Timestamp,
                 Text: text,
                 RomajiText: romaji,
-                Segments: segments));
+                Segments: segments,
+                Translation: translation));
         }
 
         return result;
     }
 
-    internal static List<(TimeSpan timestamp, string text)> ParseLrc(string lrcContent)
+    internal static List<RawLyricItem> ParseLrc(string lrcContent)
     {
-        var result = new List<(TimeSpan timestamp, string text)>();
+        var unmerged = new List<RawLyricItem>();
         var lines = lrcContent.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
 
         foreach (var rawLine in lines)
@@ -425,6 +549,23 @@ public class LyricsService : ILyricsService
 
             string lineText = LrcTimestampRegex.Replace(rawLine, string.Empty).Trim();
             if (string.IsNullOrEmpty(lineText)) continue;
+
+            // Check for inline delimiter translations: e.g. "Original // Translation" or "Original | Translation"
+            string text = lineText;
+            string? translation = null;
+
+            if (lineText.Contains(" // "))
+            {
+                var parts = lineText.Split(new[] { " // " }, 2, StringSplitOptions.None);
+                text = parts[0].Trim();
+                translation = parts[1].Trim();
+            }
+            else if (lineText.Contains(" | "))
+            {
+                var parts = lineText.Split(new[] { " | " }, 2, StringSplitOptions.None);
+                text = parts[0].Trim();
+                translation = parts[1].Trim();
+            }
 
             foreach (Match m in matches)
             {
@@ -440,12 +581,38 @@ public class LyricsService : ILyricsService
                 }
 
                 var timestamp = new TimeSpan(0, 0, min, sec, ms);
-                result.Add((timestamp, lineText));
+                unmerged.Add(new RawLyricItem(timestamp, text, translation));
             }
         }
 
-        result.Sort((a, b) => a.timestamp.CompareTo(b.timestamp));
-        return result;
+        unmerged.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+        return MergeConsecutiveBilingualLines(unmerged);
+    }
+
+    private static List<RawLyricItem> MergeConsecutiveBilingualLines(List<RawLyricItem> items)
+    {
+        if (items.Count <= 1) return items;
+
+        var merged = new List<RawLyricItem>(items.Count);
+        for (int i = 0; i < items.Count; i++)
+        {
+            var current = items[i];
+            if (current.Translation == null && i + 1 < items.Count)
+            {
+                var next = items[i + 1];
+                // If timestamps are identical or within 150ms and next has no separate translation
+                if (next.Translation == null && Math.Abs((next.Timestamp - current.Timestamp).TotalMilliseconds) <= 150)
+                {
+                    // Check if one has Japanese/CJK and other is Latin translation, or simply two paired lines
+                    merged.Add(new RawLyricItem(current.Timestamp, current.Text, next.Text));
+                    i++; // Skip the paired next line
+                    continue;
+                }
+            }
+            merged.Add(current);
+        }
+
+        return merged;
     }
 
     private KawazuConverter? GetKawazuConverter()
@@ -571,6 +738,8 @@ public class LyricsService : ILyricsService
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
+    internal sealed record RawLyricItem(TimeSpan Timestamp, string Text, string? Translation = null);
+
     internal sealed record UnisonEnvelopeDto(
         [property: JsonPropertyName("success")] bool Success,
         [property: JsonPropertyName("data")] UnisonDataDto? Data,
@@ -592,9 +761,12 @@ public class LyricsService : ILyricsService
         [property: JsonPropertyName("confidence")] string? Confidence);
 
     internal sealed record LrclibResponseDto(
+        [property: JsonPropertyName("id")] int? Id,
         [property: JsonPropertyName("syncedLyrics")] string? SyncedLyrics,
         [property: JsonPropertyName("plainLyrics")] string? PlainLyrics,
         [property: JsonPropertyName("trackName")] string? TrackName,
         [property: JsonPropertyName("artistName")] string? ArtistName,
+        [property: JsonPropertyName("albumName")] string? AlbumName,
         [property: JsonPropertyName("duration")] double? Duration);
 }
+

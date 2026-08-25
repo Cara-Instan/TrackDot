@@ -88,37 +88,66 @@
                           Foreground="{DynamicResource TextBrush}"
                           Margin="0,0,0,14" />
 
-                <!-- Window Transparency / Opacity Section -->
-                <Grid Margin="0,0,0,16">
+                <!-- Lyrics & Floating HUD Section -->
+                <TextBlock Text="Lyrics &amp; Floating HUD"
+                           FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" />
+
+                <CheckBox Content="Show Translation / Romaji secondary lyric lines"
+                          IsChecked="{Binding LyricsShowTranslation, Mode=TwoWay}"
+                          Foreground="{DynamicResource TextBrush}"
+                          Margin="0,0,0,8" />
+
+                <CheckBox Content="Lock Floating HUD in click-through mode"
+                          IsChecked="{Binding LyricsHudIsLocked, Mode=TwoWay}"
+                          Foreground="{DynamicResource TextBrush}"
+                          ToolTip="When locked, clicks pass through HUD directly to games/applications"
+                          Margin="0,0,0,12" />
+
+                <!-- HUD Opacity -->
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="HUD Opacity" Foreground="{DynamicResource TextBrush}" FontSize="12" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Slider Width="110" Minimum="20" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
+                                Value="{Binding LyricsHudOpacityPercent, Mode=TwoWay}"
+                                VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource VolumeSliderStyle}" />
+                        <TextBlock Text="{Binding LyricsHudOpacityDisplayText}" Foreground="{DynamicResource TextBrush}" FontSize="12" Width="38" TextAlignment="Right" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- Popover Opacity -->
+                <Grid Margin="0,0,0,14">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="Popover Opacity"
-                                   Foreground="{DynamicResource TextBrush}"
-                                   FontSize="12" />
-                        <TextBlock Text="Adjust transparency of the floating mini player"
-                                   Foreground="{DynamicResource MutedBrush}"
-                                   FontSize="11" />
+                        <TextBlock Text="Popover Opacity" Foreground="{DynamicResource TextBrush}" FontSize="12" />
+                        <TextBlock Text="Adjust transparency of the floating mini player" Foreground="{DynamicResource MutedBrush}" FontSize="11" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Slider x:Name="OpacitySlider"
-                                Width="110"
-                                Minimum="20"
-                                Maximum="100"
-                                TickFrequency="5"
-                                IsSnapToTickEnabled="True"
+                        <Slider Width="110" Minimum="20" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
                                 Value="{Binding OpacityPercent, Mode=TwoWay}"
-                                VerticalAlignment="Center"
-                                Margin="0,0,8,0"
-                                Style="{StaticResource VolumeSliderStyle}" />
-                        <TextBlock Text="{Binding OpacityDisplayText}"
-                                   Foreground="{DynamicResource TextBrush}"
-                                   FontSize="12"
-                                   Width="38"
-                                   TextAlignment="Right"
-                                   VerticalAlignment="Center" />
+                                VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource VolumeSliderStyle}" />
+                        <TextBlock Text="{Binding OpacityDisplayText}" Foreground="{DynamicResource TextBrush}" FontSize="12" Width="38" TextAlignment="Right" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- HUD Font Size -->
+                <Grid Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="HUD Font Size" Foreground="{DynamicResource TextBrush}" FontSize="12" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Slider Width="110" Minimum="14" Maximum="60" TickFrequency="2" IsSnapToTickEnabled="True"
+                                Value="{Binding LyricsHudFontSize, Mode=TwoWay}"
+                                VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource VolumeSliderStyle}" />
+                        <TextBlock Text="{Binding LyricsHudFontSize, StringFormat='{}{0:0}px'}" Foreground="{DynamicResource TextBrush}" FontSize="12" Width="38" TextAlignment="Right" VerticalAlignment="Center" />
                     </StackPanel>
                 </Grid>
 

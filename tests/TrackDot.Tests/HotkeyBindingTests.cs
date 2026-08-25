@@ -57,6 +57,8 @@ public class HotkeyBindingTests
         Assert.Contains(defaults, d => d.Action == HotkeyAction.ToggleMute);
         Assert.Contains(defaults, d => d.Action == HotkeyAction.VolumeUp);
         Assert.Contains(defaults, d => d.Action == HotkeyAction.VolumeDown);
+        Assert.Contains(defaults, d => d.Action == HotkeyAction.ToggleLyrics);
+        Assert.Contains(defaults, d => d.Action == HotkeyAction.ToggleLyricsHud);
     }
 }
 

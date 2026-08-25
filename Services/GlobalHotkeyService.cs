@@ -20,6 +20,8 @@ public sealed class GlobalHotkeyService : IGlobalHotkeyService
     private readonly IWindowSettingsService? _windowSettings;
     private readonly Action? _onToggleWindow;
     private readonly Action? _onOpenSettings;
+    private readonly Action? _onToggleLyrics;
+    private readonly Action? _onToggleLyricsHud;
     private readonly HashSet<int> _registeredIds = new();
     private IntPtr _hwnd = IntPtr.Zero;
     private HwndSource? _hwndSource;
@@ -33,13 +35,17 @@ public sealed class GlobalHotkeyService : IGlobalHotkeyService
         MainViewModel viewModel,
         IWindowSettingsService? windowSettings = null,
         Action? onToggleWindow = null,
-        Action? onOpenSettings = null)
+        Action? onOpenSettings = null,
+        Action? onToggleLyrics = null,
+        Action? onToggleLyricsHud = null)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         _viewModel = viewModel;
         _windowSettings = windowSettings;
         _onToggleWindow = onToggleWindow;
         _onOpenSettings = onOpenSettings;
+        _onToggleLyrics = onToggleLyrics;
+        _onToggleLyricsHud = onToggleLyricsHud;
     }
 
     /// <inheritdoc/>
@@ -182,6 +188,14 @@ public sealed class GlobalHotkeyService : IGlobalHotkeyService
 
             case HotkeyAction.ToggleWindow:
                 _onToggleWindow?.Invoke();
+                break;
+
+            case HotkeyAction.ToggleLyrics:
+                _onToggleLyrics?.Invoke();
+                break;
+
+            case HotkeyAction.ToggleLyricsHud:
+                _onToggleLyricsHud?.Invoke();
                 break;
         }
     }

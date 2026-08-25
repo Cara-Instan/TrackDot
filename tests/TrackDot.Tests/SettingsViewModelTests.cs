@@ -118,4 +118,34 @@ public class SettingsViewModelTests
         sut.ResetHotkeysToDefault();
         Assert.Equal("Ctrl+Alt+Space", playPauseItem.GestureText);
     }
+
+    [Fact]
+    public void LyricsAndHudSettings_UpdatesWindowSettingsService()
+    {
+        using var themeService = new ThemeService();
+        var startupService = new FakeStartupService();
+        var windowSettings = new WindowSettingsService(
+            initialLyricsShowTranslation: true,
+            initialLyricsHudIsLocked: false,
+            initialLyricsHudOpacityPercent: 90,
+            initialLyricsHudFontSize: 22.0);
+        using var sut = new SettingsViewModel(startupService, themeService, windowSettings);
+
+        Assert.True(sut.LyricsShowTranslation);
+        sut.LyricsShowTranslation = false;
+        Assert.False(windowSettings.LyricsShowTranslation);
+
+        Assert.False(sut.LyricsHudIsLocked);
+        sut.LyricsHudIsLocked = true;
+        Assert.True(windowSettings.LyricsHudIsLocked);
+
+        Assert.Equal(90, sut.LyricsHudOpacityPercent);
+        sut.LyricsHudOpacityPercent = 75;
+        Assert.Equal(75, windowSettings.LyricsHudOpacityPercent);
+        Assert.Equal("75%", sut.LyricsHudOpacityDisplayText);
+
+        Assert.Equal(22.0, sut.LyricsHudFontSize);
+        sut.LyricsHudFontSize = 32.0;
+        Assert.Equal(32.0, windowSettings.LyricsHudFontSize);
+    }
 }

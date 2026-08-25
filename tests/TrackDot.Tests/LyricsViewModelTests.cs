@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using TrackDot.Models;
@@ -18,10 +19,47 @@ public class LyricsViewModelTests
         {
             IReadOnlyList<LyricLine> list = new[]
             {
-                new LyricLine(0, TimeSpan.FromSeconds(0), "Line 1", "Line 1", new[] { new FuriganaSegment("Line 1", "") }),
-                new LyricLine(1, TimeSpan.FromSeconds(5), "Line 2", "Line 2", new[] { new FuriganaSegment("Line 2", "") }),
+                new LyricLine(0, TimeSpan.FromSeconds(0), "Line 1", "Line 1", new[] { new FuriganaSegment("Line 1", "") }, "Translation 1"),
+                new LyricLine(1, TimeSpan.FromSeconds(5), "Line 2", "Line 2", new[] { new FuriganaSegment("Line 2", "") }, "Translation 2"),
             };
             return Task.FromResult(list);
+        }
+
+        public Task<IReadOnlyList<LyricsSearchResult>> SearchCandidatesAsync(
+            string query, CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<LyricsSearchResult> results = new[]
+            {
+                new LyricsSearchResult(101, "Candidate Song", "Candidate Artist", "Candidate Album", TimeSpan.FromMinutes(3), true, true, "LRCLIB")
+            };
+            return Task.FromResult(results);
+        }
+
+        public Task<IReadOnlyList<LyricLine>> FetchLyricsByResultAsync(
+            LyricsSearchResult result, CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<LyricLine> list = new[]
+            {
+                new LyricLine(0, TimeSpan.FromSeconds(0), "Searched Line 1", "Searched Line 1", new[] { new FuriganaSegment("Searched Line 1", "") }),
+                new LyricLine(1, TimeSpan.FromSeconds(4), "Searched Line 2", "Searched Line 2", new[] { new FuriganaSegment("Searched Line 2", "") }),
+            };
+            return Task.FromResult(list);
+        }
+
+        public Task<IReadOnlyList<LyricLine>> ParseCustomLyricsAsync(
+            string rawContent, string? format = null, CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<LyricLine> list = new[]
+            {
+                new LyricLine(0, TimeSpan.FromSeconds(0), "Custom Line 1", "Custom Line 1", new[] { new FuriganaSegment("Custom Line 1", "") }),
+                new LyricLine(1, TimeSpan.FromSeconds(3), "Custom Line 2", "Custom Line 2", new[] { new FuriganaSegment("Custom Line 2", "") }),
+            };
+            return Task.FromResult(list);
+        }
+
+        public void SaveLyricsToCache(
+            string title, string artist, string album, IReadOnlyList<LyricLine> lyrics)
+        {
         }
     }
 
@@ -153,5 +191,85 @@ public class LyricsViewModelTests
         Assert.NotNull(vm.DynamicAccentBrush);
         Assert.NotNull(vm.ArtworkAmbientGlowBrush);
         Assert.True(vm.HasDynamicAccent);
+    }
+
+    [Fact]
+    public async Task ManualSearch_And_SelectCandidate_UpdatesLyrics()
+    {
+        var mediaSvc = new FakeMediaControllerService();
+        var lyricsSvc = new FakeLyricsService();
+        var ticker = new FakeTicker();
+        var windowSettings = new WindowSettingsService();
+
+        using var vm = new LyricsViewModel(mediaSvc, lyricsSvc, ticker, windowSettings);
+
+        vm.OpenSearchPanelCommand.Execute(null);
+        await Task.Yield();
+        Assert.True(vm.IsSearchPanelOpen);
+
+        vm.SearchQuery = "Candidate Song";
+        vm.SearchLyricsCommand.Execute(null);
+        await Task.Yield();
+
+        Assert.True(vm.HasSearchResults);
+        Assert.Single(vm.SearchResults);
+
+        var candidate = vm.SearchResults[0];
+        vm.SelectSearchResultCommand.Execute(candidate);
+        await Task.Yield();
+
+        Assert.False(vm.IsSearchPanelOpen);
+        Assert.Equal(2, vm.Lines.Count);
+        Assert.Equal("Searched Line 1", vm.Lines[0].Text);
+    }
+
+    [Fact]
+    public async Task CustomLyrics_LoadCustomContent_UpdatesLines()
+    {
+        var mediaSvc = new FakeMediaControllerService();
+        var lyricsSvc = new FakeLyricsService();
+        var ticker = new FakeTicker();
+        var windowSettings = new WindowSettingsService();
+
+        using var vm = new LyricsViewModel(mediaSvc, lyricsSvc, ticker, windowSettings);
+
+        await vm.LoadCustomLyricsAsync("[00:00.00]Custom Line 1\n[00:03.00]Custom Line 2");
+
+        Assert.Equal(2, vm.Lines.Count);
+        Assert.Equal("Custom Line 1", vm.Lines[0].Text);
+    }
+
+    [Fact]
+    public void LyricsHudViewModel_TracksActiveAndNextLine_AndCommands()
+    {
+        var mediaSvc = new FakeMediaControllerService();
+        var lyricsSvc = new FakeLyricsService();
+        var ticker = new FakeTicker();
+        var windowSettings = new WindowSettingsService(
+            initialPinned: false,
+            initialOpacity: 100,
+            initialGlobalHotkeys: true,
+            initialLyricsOpacity: 85,
+            initialDynamicTinting: true,
+            initialLyricsHudIsLocked: false,
+            initialLyricsShowTranslation: true,
+            initialLyricsHudShowTranslation: true);
+
+        using var lyricsVm = new LyricsViewModel(mediaSvc, lyricsSvc, ticker, windowSettings);
+        using var hudVm = new LyricsHudViewModel(lyricsVm, mediaSvc, windowSettings);
+
+        Assert.False(hudVm.IsLocked);
+        hudVm.ToggleLockCommand.Execute(null);
+        Assert.True(hudVm.IsLocked);
+
+        double initialFontSize = hudVm.FontSize;
+        hudVm.IncreaseFontSizeCommand.Execute(null);
+        Assert.Equal(initialFontSize + 2.0, hudVm.FontSize);
+
+        hudVm.DecreaseFontSizeCommand.Execute(null);
+        Assert.Equal(initialFontSize, hudVm.FontSize);
+
+        hudVm.ToggleTranslationCommand.Execute(null);
+        Assert.False(hudVm.IsTranslationVisible);
     }
 }

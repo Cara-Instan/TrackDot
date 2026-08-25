@@ -69,6 +69,8 @@ public sealed class WpfThemePaletteApplier : IDisposable
             // Palette definitions for Dark and Light mode
             var panelColor = isDark ? ColorFromHex("#1A1B1E") : ColorFromHex("#FFFFFF");
             var panelBorderColor = isDark ? ColorFromHex("#2E3036") : ColorFromHex("#E5E7EB");
+            var cardColor = isDark ? ColorFromHex("#202226") : ColorFromHex("#F9FAFB");
+            var cardBorderColor = isDark ? ColorFromHex("#2E3036") : ColorFromHex("#E5E7EB");
             var textColor = isDark ? ColorFromHex("#F3F4F6") : ColorFromHex("#111827");
             var mutedColor = isDark ? ColorFromHex("#9CA3AF") : ColorFromHex("#6B7280");
             var accentColor = isDark ? ColorFromHex("#8AB4F8") : ColorFromHex("#1A73E8");
@@ -85,6 +87,8 @@ public sealed class WpfThemePaletteApplier : IDisposable
 
             SetOrUpdateBrush(res, "PanelBrush", panelColor);
             SetOrUpdateBrush(res, "PanelBorderBrush", panelBorderColor);
+            SetOrUpdateBrush(res, "CardBrush", cardColor);
+            SetOrUpdateBrush(res, "CardBorderBrush", cardBorderColor);
             SetOrUpdateBrush(res, "TextBrush", textColor);
             SetOrUpdateBrush(res, "MutedBrush", mutedColor);
             SetOrUpdateBrush(res, "AccentBrush", accentColor);

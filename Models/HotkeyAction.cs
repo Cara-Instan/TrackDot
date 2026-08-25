@@ -13,6 +13,8 @@ public enum HotkeyAction
     ToggleMute = 5,
     VolumeUp = 6,
     VolumeDown = 7,
-    OpenSettings = 8
+    OpenSettings = 8,
+    ToggleLyrics = 9,
+    ToggleLyricsHud = 10
 }
 

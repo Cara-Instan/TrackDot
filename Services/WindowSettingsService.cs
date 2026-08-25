@@ -165,10 +165,22 @@ public sealed class WindowSettingsService : IWindowSettingsService
     private int _lyricsOpacityPercent;
     private bool _lyricsIsTopmost;
     private bool _lyricsIsFuriganaVisible;
+    private bool _lyricsShowTranslation;
     private double _lyricsWindowLeft;
     private double _lyricsWindowTop;
     private double _lyricsWindowWidth;
     private double _lyricsWindowHeight;
+
+    private bool _lyricsHudVisible;
+    private bool _lyricsHudIsLocked;
+    private double _lyricsHudLeft;
+    private double _lyricsHudTop;
+    private double _lyricsHudWidth;
+    private double _lyricsHudHeight;
+    private int _lyricsHudOpacityPercent;
+    private double _lyricsHudFontSize;
+    private bool _lyricsHudShowFurigana;
+    private bool _lyricsHudShowTranslation;
 
     /// <inheritdoc/>
     public bool LyricsWindowVisible
@@ -219,6 +231,19 @@ public sealed class WindowSettingsService : IWindowSettingsService
             if (_lyricsIsFuriganaVisible == value) return;
             _lyricsIsFuriganaVisible = value;
             SaveValue("LyricsIsFuriganaVisible", value ? 1 : 0, d => d.LyricsIsFuriganaVisible = value);
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool LyricsShowTranslation
+    {
+        get => _lyricsShowTranslation;
+        set
+        {
+            if (_lyricsShowTranslation == value) return;
+            _lyricsShowTranslation = value;
+            SaveValue("LyricsShowTranslation", value ? 1 : 0, d => d.LyricsShowTranslation = value);
             SettingsChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -277,6 +302,140 @@ public sealed class WindowSettingsService : IWindowSettingsService
         }
     }
 
+    /// <inheritdoc/>
+    public bool LyricsHudVisible
+    {
+        get => _lyricsHudVisible;
+        set
+        {
+            if (_lyricsHudVisible == value) return;
+            _lyricsHudVisible = value;
+            SaveValue("LyricsHudVisible", value ? 1 : 0, d => d.LyricsHudVisible = value);
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool LyricsHudIsLocked
+    {
+        get => _lyricsHudIsLocked;
+        set
+        {
+            if (_lyricsHudIsLocked == value) return;
+            _lyricsHudIsLocked = value;
+            SaveValue("LyricsHudIsLocked", value ? 1 : 0, d => d.LyricsHudIsLocked = value);
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public double LyricsHudLeft
+    {
+        get => _lyricsHudLeft;
+        set
+        {
+            if (Math.Abs(_lyricsHudLeft - value) < 0.1) return;
+            _lyricsHudLeft = value;
+            SaveStringValue("LyricsHudLeft", value.ToString(System.Globalization.CultureInfo.InvariantCulture), d => d.LyricsHudLeft = value);
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public double LyricsHudTop
+    {
+        get => _lyricsHudTop;
+        set
+        {
+            if (Math.Abs(_lyricsHudTop - value) < 0.1) return;
+            _lyricsHudTop = value;
+            SaveStringValue("LyricsHudTop", value.ToString(System.Globalization.CultureInfo.InvariantCulture), d => d.LyricsHudTop = value);
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public double LyricsHudWidth
+    {
+        get => _lyricsHudWidth;
+        set
+        {
+            var clamped = Math.Max(value, 300);
+            if (Math.Abs(_lyricsHudWidth - clamped) < 0.1) return;
+            _lyricsHudWidth = clamped;
+            SaveStringValue("LyricsHudWidth", clamped.ToString(System.Globalization.CultureInfo.InvariantCulture), d => d.LyricsHudWidth = clamped);
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public double LyricsHudHeight
+    {
+        get => _lyricsHudHeight;
+        set
+        {
+            var clamped = Math.Max(value, 60);
+            if (Math.Abs(_lyricsHudHeight - clamped) < 0.1) return;
+            _lyricsHudHeight = clamped;
+            SaveStringValue("LyricsHudHeight", clamped.ToString(System.Globalization.CultureInfo.InvariantCulture), d => d.LyricsHudHeight = clamped);
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public int LyricsHudOpacityPercent
+    {
+        get => _lyricsHudOpacityPercent;
+        set
+        {
+            var clamped = Math.Clamp(value, 20, 100);
+            if (_lyricsHudOpacityPercent == clamped) return;
+            _lyricsHudOpacityPercent = clamped;
+            SaveValue("LyricsHudOpacityPercent", clamped, d => d.LyricsHudOpacityPercent = clamped);
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public double LyricsHudFontSize
+    {
+        get => _lyricsHudFontSize;
+        set
+        {
+            var clamped = Math.Clamp(value, 14.0, 60.0);
+            if (Math.Abs(_lyricsHudFontSize - clamped) < 0.1) return;
+            _lyricsHudFontSize = clamped;
+            SaveStringValue("LyricsHudFontSize", clamped.ToString(System.Globalization.CultureInfo.InvariantCulture), d => d.LyricsHudFontSize = clamped);
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool LyricsHudShowFurigana
+    {
+        get => _lyricsHudShowFurigana;
+        set
+        {
+            if (_lyricsHudShowFurigana == value) return;
+            _lyricsHudShowFurigana = value;
+            SaveValue("LyricsHudShowFurigana", value ? 1 : 0, d => d.LyricsHudShowFurigana = value);
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool LyricsHudShowTranslation
+    {
+        get => _lyricsHudShowTranslation;
+        set
+        {
+            if (_lyricsHudShowTranslation == value) return;
+            _lyricsHudShowTranslation = value;
+            SaveValue("LyricsHudShowTranslation", value ? 1 : 0, d => d.LyricsHudShowTranslation = value);
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     /// <summary>
     /// Constructs the window settings service. Reads initial values
     /// from registry when parameters are omitted.
@@ -287,7 +446,14 @@ public sealed class WindowSettingsService : IWindowSettingsService
         bool? initialGlobalHotkeys = null,
         int? initialLyricsOpacity = null,
         bool? initialDynamicTinting = null,
-        IReadOnlyList<TrackDot.Models.HotkeyBinding>? initialHotkeys = null)
+        IReadOnlyList<TrackDot.Models.HotkeyBinding>? initialHotkeys = null,
+        bool? initialLyricsHudIsLocked = null,
+        bool? initialLyricsHudVisible = null,
+        bool? initialLyricsShowTranslation = null,
+        bool? initialLyricsHudShowTranslation = null,
+        bool? initialLyricsHudShowFurigana = null,
+        double? initialLyricsHudFontSize = null,
+        int? initialLyricsHudOpacityPercent = null)
     {
         _isPinned = initialPinned ?? LoadPinToTop();
         _opacityPercent = Math.Clamp(initialOpacity ?? LoadOpacityPercent(), 20, 100);
@@ -298,10 +464,22 @@ public sealed class WindowSettingsService : IWindowSettingsService
         _lyricsOpacityPercent = Math.Clamp(initialLyricsOpacity ?? LoadIntValue("LyricsOpacityPercent", 85, d => d.LyricsOpacityPercent), 20, 100);
         _lyricsIsTopmost = LoadBoolValue("LyricsIsTopmost", true, d => d.LyricsIsTopmost);
         _lyricsIsFuriganaVisible = LoadBoolValue("LyricsIsFuriganaVisible", true, d => d.LyricsIsFuriganaVisible);
+        _lyricsShowTranslation = initialLyricsShowTranslation ?? LoadBoolValue("LyricsShowTranslation", true, d => d.LyricsShowTranslation);
         _lyricsWindowLeft = LoadDoubleValue("LyricsWindowLeft", -1.0, d => d.LyricsWindowLeft);
         _lyricsWindowTop = LoadDoubleValue("LyricsWindowTop", -1.0, d => d.LyricsWindowTop);
         _lyricsWindowWidth = LoadDoubleValue("LyricsWindowWidth", 420.0, d => d.LyricsWindowWidth);
         _lyricsWindowHeight = LoadDoubleValue("LyricsWindowHeight", 580.0, d => d.LyricsWindowHeight);
+
+        _lyricsHudVisible = initialLyricsHudVisible ?? LoadBoolValue("LyricsHudVisible", false, d => d.LyricsHudVisible);
+        _lyricsHudIsLocked = initialLyricsHudIsLocked ?? LoadBoolValue("LyricsHudIsLocked", false, d => d.LyricsHudIsLocked);
+        _lyricsHudLeft = LoadDoubleValue("LyricsHudLeft", -1.0, d => d.LyricsHudLeft);
+        _lyricsHudTop = LoadDoubleValue("LyricsHudTop", -1.0, d => d.LyricsHudTop);
+        _lyricsHudWidth = LoadDoubleValue("LyricsHudWidth", 720.0, d => d.LyricsHudWidth);
+        _lyricsHudHeight = LoadDoubleValue("LyricsHudHeight", 100.0, d => d.LyricsHudHeight);
+        _lyricsHudOpacityPercent = Math.Clamp(initialLyricsHudOpacityPercent ?? LoadIntValue("LyricsHudOpacityPercent", 90, d => d.LyricsHudOpacityPercent), 20, 100);
+        _lyricsHudFontSize = Math.Clamp(initialLyricsHudFontSize ?? LoadDoubleValue("LyricsHudFontSize", 22.0, d => d.LyricsHudFontSize), 14.0, 60.0);
+        _lyricsHudShowFurigana = initialLyricsHudShowFurigana ?? LoadBoolValue("LyricsHudShowFurigana", true, d => d.LyricsHudShowFurigana);
+        _lyricsHudShowTranslation = initialLyricsHudShowTranslation ?? LoadBoolValue("LyricsHudShowTranslation", true, d => d.LyricsHudShowTranslation);
 
         if (initialHotkeys != null)
         {
@@ -360,10 +538,21 @@ public sealed class WindowSettingsService : IWindowSettingsService
         public int LyricsOpacityPercent { get; set; } = 85;
         public bool LyricsIsTopmost { get; set; } = true;
         public bool LyricsIsFuriganaVisible { get; set; } = true;
+        public bool LyricsShowTranslation { get; set; } = true;
         public double LyricsWindowLeft { get; set; } = -1.0;
         public double LyricsWindowTop { get; set; } = -1.0;
         public double LyricsWindowWidth { get; set; } = 420.0;
         public double LyricsWindowHeight { get; set; } = 580.0;
+        public bool LyricsHudVisible { get; set; }
+        public bool LyricsHudIsLocked { get; set; }
+        public double LyricsHudLeft { get; set; } = -1.0;
+        public double LyricsHudTop { get; set; } = -1.0;
+        public double LyricsHudWidth { get; set; } = 720.0;
+        public double LyricsHudHeight { get; set; } = 100.0;
+        public int LyricsHudOpacityPercent { get; set; } = 90;
+        public double LyricsHudFontSize { get; set; } = 22.0;
+        public bool LyricsHudShowFurigana { get; set; } = true;
+        public bool LyricsHudShowTranslation { get; set; } = true;
     }
 
     private static string PortableSettingsPath => System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");

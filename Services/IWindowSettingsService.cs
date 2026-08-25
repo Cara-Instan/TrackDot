@@ -50,6 +50,11 @@ public interface IWindowSettingsService
     bool LyricsIsFuriganaVisible { get; set; }
 
     /// <summary>
+    /// <see langword="true"/> when translated or secondary lyric lines are displayed below original lyrics.
+    /// </summary>
+    bool LyricsShowTranslation { get; set; }
+
+    /// <summary>
     /// Saved X position of lyrics window.
     /// </summary>
     double LyricsWindowLeft { get; set; }
@@ -68,6 +73,56 @@ public interface IWindowSettingsService
     /// Saved height of lyrics window.
     /// </summary>
     double LyricsWindowHeight { get; set; }
+
+    /// <summary>
+    /// <see langword="true"/> when the mini floating lyrics HUD overlay is visible.
+    /// </summary>
+    bool LyricsHudVisible { get; set; }
+
+    /// <summary>
+    /// <see langword="true"/> when the lyrics HUD is locked in click-through mode (WS_EX_TRANSPARENT).
+    /// </summary>
+    bool LyricsHudIsLocked { get; set; }
+
+    /// <summary>
+    /// Saved X position of lyrics HUD window.
+    /// </summary>
+    double LyricsHudLeft { get; set; }
+
+    /// <summary>
+    /// Saved Y position of lyrics HUD window.
+    /// </summary>
+    double LyricsHudTop { get; set; }
+
+    /// <summary>
+    /// Saved width of lyrics HUD window.
+    /// </summary>
+    double LyricsHudWidth { get; set; }
+
+    /// <summary>
+    /// Saved height of lyrics HUD window.
+    /// </summary>
+    double LyricsHudHeight { get; set; }
+
+    /// <summary>
+    /// Lyrics HUD opacity percentage [20-100].
+    /// </summary>
+    int LyricsHudOpacityPercent { get; set; }
+
+    /// <summary>
+    /// Lyrics HUD base font size in pixels [14-60].
+    /// </summary>
+    double LyricsHudFontSize { get; set; }
+
+    /// <summary>
+    /// <see langword="true"/> when Furigana ruby text is enabled in the floating HUD.
+    /// </summary>
+    bool LyricsHudShowFurigana { get; set; }
+
+    /// <summary>
+    /// <see langword="true"/> when Translation / secondary lines are enabled in the floating HUD.
+    /// </summary>
+    bool LyricsHudShowTranslation { get; set; }
 
     /// <summary>
     /// <see langword="true"/> when dynamic palette tinting from album art is enabled.

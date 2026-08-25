@@ -27,6 +27,8 @@ public sealed record HotkeyBinding(
         HotkeyAction.VolumeUp => "Volume Up",
         HotkeyAction.VolumeDown => "Volume Down",
         HotkeyAction.OpenSettings => "Open Settings",
+        HotkeyAction.ToggleLyrics => "Toggle Lyrics",
+        HotkeyAction.ToggleLyricsHud => "Toggle Floating HUD",
         _ => Action.ToString()
     };
 
@@ -102,6 +104,8 @@ public sealed record HotkeyBinding(
         new(HotkeyAction.ToggleMute, ModifierKeys.Control | ModifierKeys.Alt, Key.M),
         new(HotkeyAction.VolumeUp, ModifierKeys.Control | ModifierKeys.Alt, Key.Up),
         new(HotkeyAction.VolumeDown, ModifierKeys.Control | ModifierKeys.Alt, Key.Down),
+        new(HotkeyAction.ToggleLyrics, ModifierKeys.Control | ModifierKeys.Alt, Key.L),
+        new(HotkeyAction.ToggleLyricsHud, ModifierKeys.Control | ModifierKeys.Alt, Key.H),
     };
 }
 

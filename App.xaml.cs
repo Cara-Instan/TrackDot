@@ -44,6 +44,8 @@ public partial class App : Application
     private DispatcherUiTicker? _lyricsTicker;
     private LyricsViewModel? _lyricsViewModel;
     private LyricsWindow? _lyricsWindow;
+    private LyricsHudViewModel? _lyricsHudViewModel;
+    private LyricsHudWindow? _lyricsHudWindow;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -80,7 +82,7 @@ public partial class App : Application
         _hotkeysWindow = new HotkeysWindow();
         _hotkeysWindow.SetViewModel(_hotkeysViewModel, _themeService);
 
-        // Step 3: build media-control service, view-model, popover window, and lyrics window.
+        // Step 3: build media-control service, view-model, popover window, lyrics window and HUD.
         _mediaService = new MediaControllerService();
         _ticker = new DispatcherUiTicker();
         _viewModel = new MainViewModel(_mediaService, _ticker, windowSettingsService: _windowSettingsService);
@@ -89,7 +91,11 @@ public partial class App : Application
         _lyricsTicker = new DispatcherUiTicker();
         _lyricsViewModel = new LyricsViewModel(_mediaService, _lyricsService, _lyricsTicker, _windowSettingsService);
         _lyricsWindow = new LyricsWindow();
-        _lyricsWindow.SetViewModel(_lyricsViewModel, _windowSettingsService);
+        _lyricsWindow.SetViewModel(_lyricsViewModel, _windowSettingsService, onToggleHud: () => ToggleLyricsHud());
+
+        _lyricsHudViewModel = new LyricsHudViewModel(_lyricsViewModel, _mediaService, _windowSettingsService);
+        _lyricsHudWindow = new LyricsHudWindow();
+        _lyricsHudWindow.SetViewModel(_lyricsHudViewModel, _lyricsViewModel, _windowSettingsService, onOpenFullLyrics: () => _lyricsWindow?.ShowLyrics());
 
         _mainWindow = new MainWindow { DataContext = _viewModel };
         _mainWindow.SetViewModel(_viewModel);
@@ -98,6 +104,7 @@ public partial class App : Application
             onOpenAbout: () => _aboutWindow?.ShowAbout(),
             onOpenHotkeys: () => _hotkeysWindow?.ShowHotkeys(),
             onOpenLyrics: () => _lyricsWindow?.ShowLyrics(),
+            onOpenLyricsHud: () => ToggleLyricsHud(),
             windowSettingsService: _windowSettingsService);
 
         if (_windowSettingsService.LyricsWindowVisible)
@@ -105,12 +112,19 @@ public partial class App : Application
             _lyricsWindow.ShowLyrics();
         }
 
+        if (_windowSettingsService.LyricsHudVisible)
+        {
+            _lyricsHudWindow.ShowHud();
+        }
+
         // Step 3b: global hotkey service.
         _globalHotkeyService = new GlobalHotkeyService(
             _viewModel,
             _windowSettingsService,
             onToggleWindow: () => _tray?.TogglePopover(),
-            onOpenSettings: () => _settingsWindow?.ShowSettings());
+            onOpenSettings: () => _settingsWindow?.ShowSettings(),
+            onToggleLyrics: () => ToggleLyrics(),
+            onToggleLyricsHud: () => ToggleLyricsHud());
         _mainWindow.SourceInitialized += (s, ev) => UpdateGlobalHotkeysRegistration();
         _windowSettingsService.SettingsChanged += (s, ev) => UpdateGlobalHotkeysRegistration();
         UpdateGlobalHotkeysRegistration();
@@ -128,6 +142,20 @@ public partial class App : Application
 
         // Step 6: async SMTC discovery.
         _ = InitializeMediaAsync();
+    }
+
+    private void ToggleLyrics()
+    {
+        if (_lyricsWindow == null) return;
+        if (_lyricsWindow.IsVisible) _lyricsWindow.HideLyrics();
+        else _lyricsWindow.ShowLyrics();
+    }
+
+    private void ToggleLyricsHud()
+    {
+        if (_lyricsHudWindow == null) return;
+        if (_lyricsHudWindow.IsVisible) _lyricsHudWindow.HideHud();
+        else _lyricsHudWindow.ShowHud();
     }
 
     private void UpdateGlobalHotkeysRegistration()
@@ -159,6 +187,7 @@ public partial class App : Application
     {
         _mainWindow?.BeginShutdown();
         _lyricsWindow?.BeginShutdown();
+        _lyricsHudWindow?.BeginShutdown();
         _settingsWindow?.BeginShutdown();
         _aboutWindow?.BeginShutdown();
         _hotkeysWindow?.BeginShutdown();
@@ -169,6 +198,11 @@ public partial class App : Application
         try { _tray?.Dispose(); } catch { /* swallow — best effort */ }
         _tray = null;
         _trayHandle = null;
+
+        try { _lyricsHudWindow?.Close(); } catch { /* swallow */ }
+        _lyricsHudWindow = null;
+        try { _lyricsHudViewModel?.Dispose(); } catch { /* swallow */ }
+        _lyricsHudViewModel = null;
 
         try { _lyricsWindow?.Close(); } catch { /* swallow */ }
         _lyricsWindow = null;

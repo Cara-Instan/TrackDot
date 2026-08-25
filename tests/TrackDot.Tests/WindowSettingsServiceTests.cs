@@ -136,4 +136,44 @@ public class WindowSettingsServiceTests
         sut.ResetHotkeyBindingsToDefault();
         Assert.Equal("Ctrl+Alt+Space", sut.GetHotkeyBinding(TrackDot.Models.HotkeyAction.PlayPause).GestureText);
     }
+
+    [Fact]
+    public void LyricsAndHudSettings_ToggleAndFireSettingsChanged()
+    {
+        var sut = new WindowSettingsService(
+            initialPinned: false,
+            initialOpacity: 100,
+            initialGlobalHotkeys: true,
+            initialLyricsOpacity: 85,
+            initialDynamicTinting: true,
+            initialLyricsHudIsLocked: false,
+            initialLyricsHudVisible: false,
+            initialLyricsShowTranslation: true,
+            initialLyricsHudShowTranslation: true,
+            initialLyricsHudFontSize: 22.0);
+        bool fired = false;
+        sut.SettingsChanged += (s, e) => fired = true;
+
+        Assert.True(sut.LyricsShowTranslation);
+        sut.LyricsShowTranslation = false;
+        Assert.False(sut.LyricsShowTranslation);
+        Assert.True(fired);
+
+        fired = false;
+        Assert.False(sut.LyricsHudVisible);
+        sut.LyricsHudVisible = true;
+        Assert.True(sut.LyricsHudVisible);
+        Assert.True(fired);
+
+        fired = false;
+        Assert.False(sut.LyricsHudIsLocked);
+        sut.LyricsHudIsLocked = true;
+        Assert.True(sut.LyricsHudIsLocked);
+        Assert.True(fired);
+
+        fired = false;
+        sut.LyricsHudFontSize = 28.0;
+        Assert.Equal(28.0, sut.LyricsHudFontSize);
+        Assert.True(fired);
+    }
 }
