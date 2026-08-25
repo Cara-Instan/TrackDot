@@ -91,4 +91,67 @@ public class LyricsViewModelTests
         Assert.Equal(0.0, vm.ManualOffsetSeconds);
         Assert.Equal("0.0s", vm.OffsetDisplay);
     }
+
+    [Fact]
+    public void DynamicTinting_ExtractsBrushesWhenArtworkPresent()
+    {
+        var mediaSvc = new FakeMediaControllerService();
+        var lyricsSvc = new FakeLyricsService();
+        var ticker = new FakeTicker();
+        var windowSettings = new WindowSettingsService(
+            initialPinned: false,
+            initialOpacity: 100,
+            initialGlobalHotkeys: true,
+            initialLyricsOpacity: 85,
+            initialDynamicTinting: true);
+
+        // 8x8 bitmap with vibrant blue
+        int width = 8, height = 8, stride = width * 4;
+        byte[] pixels = new byte[stride * height];
+        for (int i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = 220;     // B
+            pixels[i + 1] = 30;  // G
+            pixels[i + 2] = 30;  // R
+            pixels[i + 3] = 255; // A
+        }
+        var bitmap = System.Windows.Media.Imaging.BitmapSource.Create(
+            width, height, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null, pixels, stride);
+        bitmap.Freeze();
+
+        var snapshot = new MediaSessionSnapshot(
+            SourceAppUserModelId: "Spotify",
+            Title: "Song With Artwork",
+            Artist: "Artist With Artwork",
+            AlbumTitle: "Album With Artwork",
+            Artwork: bitmap,
+            Playback: new PlaybackSnapshot(
+                State: MediaPlaybackState.Playing,
+                Position: TimeSpan.Zero,
+                StartTime: TimeSpan.Zero,
+                EndTime: TimeSpan.FromMinutes(3),
+                TimelineUpdatedAt: DateTimeOffset.UtcNow,
+                Capabilities: new TransportCapabilities(true, true, true, true, true)));
+
+        mediaSvc.Publish(snapshot);
+
+        using var vm = new LyricsViewModel(mediaSvc, lyricsSvc, ticker, windowSettings);
+
+        Assert.NotNull(vm.DominantArtworkColor);
+        Assert.NotNull(vm.DynamicAccentBrush);
+        Assert.NotNull(vm.ArtworkAmbientGlowBrush);
+        Assert.True(vm.HasDynamicAccent);
+
+        // Toggle dynamic tinting setting off
+        windowSettings.EnableDynamicTinting = false;
+        Assert.Null(vm.DynamicAccentBrush);
+        Assert.Null(vm.ArtworkAmbientGlowBrush);
+        Assert.False(vm.HasDynamicAccent);
+
+        // Toggle back on
+        windowSettings.EnableDynamicTinting = true;
+        Assert.NotNull(vm.DynamicAccentBrush);
+        Assert.NotNull(vm.ArtworkAmbientGlowBrush);
+        Assert.True(vm.HasDynamicAccent);
+    }
 }

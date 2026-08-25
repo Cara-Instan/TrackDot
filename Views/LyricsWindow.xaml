@@ -27,7 +27,12 @@
                 BorderBrush="{DynamicResource PanelBorderBrush}"
                 BorderThickness="1"
                 CornerRadius="14"
-                Opacity="{Binding WindowOpacity}" />
+                Opacity="{Binding WindowOpacity}">
+            <!-- Dynamic Ambient Glow from Artwork (Soft Radial Tint) -->
+            <Border Background="{Binding ArtworkAmbientGlowBrush}"
+                    CornerRadius="14"
+                    IsHitTestVisible="False" />
+        </Border>
 
         <!-- Foreground Content Layer (100% Opaque Text and Controls) -->
         <Border Padding="14">
@@ -69,6 +74,13 @@
                                         <DataTrigger Binding="{Binding IsFuriganaVisible}" Value="True">
                                             <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                                         </DataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsFuriganaVisible}" Value="True" />
+                                                <Condition Binding="{Binding HasDynamicAccent}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Foreground" Value="{Binding DynamicAccentBrush}" />
+                                        </MultiDataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </TextBlock.Style>
@@ -91,6 +103,13 @@
                                         <DataTrigger Binding="{Binding IsTopmost}" Value="True">
                                             <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
                                         </DataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsTopmost}" Value="True" />
+                                                <Condition Binding="{Binding HasDynamicAccent}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Fill" Value="{Binding DynamicAccentBrush}" />
+                                        </MultiDataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </Path.Style>
@@ -284,6 +303,13 @@
                                         <DataTrigger Binding="{Binding HasNonZeroOffset}" Value="True">
                                             <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                                         </DataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding HasNonZeroOffset}" Value="True" />
+                                                <Condition Binding="{Binding HasDynamicAccent}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Foreground" Value="{Binding DynamicAccentBrush}" />
+                                        </MultiDataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </TextBlock.Style>
@@ -304,8 +330,17 @@
                         Minimum="20" Maximum="100"
                         Value="{Binding OpacityPercent, Mode=TwoWay}"
                         IsMoveToPointEnabled="True"
-                        VerticalAlignment="Center"
-                        Style="{StaticResource VolumeSliderStyle}" />
+                        VerticalAlignment="Center">
+                    <Slider.Style>
+                        <Style TargetType="Slider" BasedOn="{StaticResource VolumeSliderStyle}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasDynamicAccent}" Value="True">
+                                    <Setter Property="Foreground" Value="{Binding DynamicAccentBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Slider.Style>
+                </Slider>
                 <TextBlock Grid.Column="4"
                            Text="{Binding OpacityPercent, StringFormat='{}{0:0}%'}"
                            Foreground="{DynamicResource MutedBrush}"

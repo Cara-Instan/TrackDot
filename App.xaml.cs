@@ -31,6 +31,7 @@ public partial class App : Application
     private SettingsWindow? _settingsWindow;
     private AboutWindow? _aboutWindow;
     private HotkeysWindow? _hotkeysWindow;
+    private HotkeysViewModel? _hotkeysViewModel;
     private WindowSettingsService? _windowSettingsService;
     private IStartupService? _startupService;
     private IThemeService? _themeService;
@@ -75,13 +76,14 @@ public partial class App : Application
         _aboutWindow = new AboutWindow();
         _aboutWindow.SetThemeService(_themeService);
 
+        _hotkeysViewModel = new HotkeysViewModel(_windowSettingsService);
         _hotkeysWindow = new HotkeysWindow();
-        _hotkeysWindow.SetThemeService(_themeService);
+        _hotkeysWindow.SetViewModel(_hotkeysViewModel, _themeService);
 
         // Step 3: build media-control service, view-model, popover window, and lyrics window.
         _mediaService = new MediaControllerService();
         _ticker = new DispatcherUiTicker();
-        _viewModel = new MainViewModel(_mediaService, _ticker);
+        _viewModel = new MainViewModel(_mediaService, _ticker, windowSettingsService: _windowSettingsService);
 
         _lyricsService = new LyricsService();
         _lyricsTicker = new DispatcherUiTicker();
@@ -106,6 +108,7 @@ public partial class App : Application
         // Step 3b: global hotkey service.
         _globalHotkeyService = new GlobalHotkeyService(
             _viewModel,
+            _windowSettingsService,
             onToggleWindow: () => _tray?.TogglePopover(),
             onOpenSettings: () => _settingsWindow?.ShowSettings());
         _mainWindow.SourceInitialized += (s, ev) => UpdateGlobalHotkeysRegistration();
@@ -142,6 +145,8 @@ public partial class App : Application
         {
             if (!_globalHotkeyService.IsRegistered)
                 _globalHotkeyService.Register(hwnd);
+            else
+                _globalHotkeyService.Reregister();
         }
         else
         {
@@ -175,6 +180,8 @@ public partial class App : Application
 
         try { _hotkeysWindow?.Close(); } catch { /* swallow */ }
         _hotkeysWindow = null;
+        try { _hotkeysViewModel?.Dispose(); } catch { /* swallow */ }
+        _hotkeysViewModel = null;
         try { _aboutWindow?.Close(); } catch { /* swallow */ }
         _aboutWindow = null;
 

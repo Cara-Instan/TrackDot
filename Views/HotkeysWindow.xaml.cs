@@ -31,6 +31,15 @@ public partial class HotkeysWindow : Window
         SourceInitialized += Window_SourceInitialized;
     }
 
+    public void SetViewModel(TrackDot.ViewModels.HotkeysViewModel viewModel, IThemeService? themeService = null)
+    {
+        DataContext = viewModel;
+        if (themeService != null)
+        {
+            SetThemeService(themeService);
+        }
+    }
+
     public void SetThemeService(IThemeService? themeService)
     {
         if (_themeService != null)

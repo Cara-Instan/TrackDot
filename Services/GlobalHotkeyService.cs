@@ -1,40 +1,26 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Input;
 using System.Windows.Interop;
+using TrackDot.Models;
 using TrackDot.ViewModels;
 
 namespace TrackDot.Services;
 
 /// <summary>
 /// Default implementation of <see cref="IGlobalHotkeyService"/>. Registers system-wide
-/// hotkeys (`Ctrl+Alt+Space`, `Ctrl+Alt+Right`, `Ctrl+Alt+Left`, `Ctrl+Alt+S`, `Ctrl+Alt+M`,
-/// `Ctrl+Alt+Up`, `Ctrl+Alt+Down`, `Alt+Shift+T`) and hooks them to the main view-model commands.
+/// hotkeys dynamically and hooks them to the main view-model commands.
 /// </summary>
 public sealed class GlobalHotkeyService : IGlobalHotkeyService
 {
-    private const int HotkeyIdPlayPause = 9001;
-    private const int HotkeyIdNext = 9002;
-    private const int HotkeyIdPrevious = 9003;
-    private const int HotkeyIdSettings = 9004;
-    private const int HotkeyIdMute = 9005;
-    private const int HotkeyIdVolumeUp = 9006;
-    private const int HotkeyIdVolumeDown = 9007;
-    private const int HotkeyIdToggleWindow = 9008;
-    private const int HotkeyIdStop = 9009;
-
-    private const uint VK_SPACE = 0x20;
-    private const uint VK_LEFT = 0x25;
-    private const uint VK_UP = 0x26;
-    private const uint VK_RIGHT = 0x27;
-    private const uint VK_DOWN = 0x28;
-    private const uint VK_S = 0x53;
-    private const uint VK_M = 0x4D;
-    private const uint VK_T = 0x54;
-    private const uint VK_PERIOD = 0xBE;
+    private const int BaseHotkeyId = 9000;
 
     private readonly MainViewModel _viewModel;
+    private readonly IWindowSettingsService? _windowSettings;
     private readonly Action? _onToggleWindow;
     private readonly Action? _onOpenSettings;
+    private readonly HashSet<int> _registeredIds = new();
     private IntPtr _hwnd = IntPtr.Zero;
     private HwndSource? _hwndSource;
     private bool _isRegistered;
@@ -45,11 +31,13 @@ public sealed class GlobalHotkeyService : IGlobalHotkeyService
 
     public GlobalHotkeyService(
         MainViewModel viewModel,
+        IWindowSettingsService? windowSettings = null,
         Action? onToggleWindow = null,
         Action? onOpenSettings = null)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         _viewModel = viewModel;
+        _windowSettings = windowSettings;
         _onToggleWindow = onToggleWindow;
         _onOpenSettings = onOpenSettings;
     }
@@ -64,21 +52,61 @@ public sealed class GlobalHotkeyService : IGlobalHotkeyService
         _hwndSource = HwndSource.FromHwnd(_hwnd);
         _hwndSource?.AddHook(HwndHook);
 
-        uint ctrlAlt = NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT | NativeMethods.MOD_NOREPEAT;
-        uint altShift = NativeMethods.MOD_ALT | NativeMethods.MOD_SHIFT | NativeMethods.MOD_NOREPEAT;
-
-        // Register hotkeys — failure on individual keys (e.g. key used by OS) is non-fatal.
-        NativeMethods.RegisterHotKey(_hwnd, HotkeyIdPlayPause, ctrlAlt, VK_SPACE);
-        NativeMethods.RegisterHotKey(_hwnd, HotkeyIdNext, ctrlAlt, VK_RIGHT);
-        NativeMethods.RegisterHotKey(_hwnd, HotkeyIdPrevious, ctrlAlt, VK_LEFT);
-        NativeMethods.RegisterHotKey(_hwnd, HotkeyIdStop, ctrlAlt, VK_PERIOD);
-        NativeMethods.RegisterHotKey(_hwnd, HotkeyIdSettings, ctrlAlt, VK_S);
-        NativeMethods.RegisterHotKey(_hwnd, HotkeyIdMute, ctrlAlt, VK_M);
-        NativeMethods.RegisterHotKey(_hwnd, HotkeyIdVolumeUp, ctrlAlt, VK_UP);
-        NativeMethods.RegisterHotKey(_hwnd, HotkeyIdVolumeDown, ctrlAlt, VK_DOWN);
-        NativeMethods.RegisterHotKey(_hwnd, HotkeyIdToggleWindow, altShift, VK_T);
+        RegisterConfiguredHotkeys();
 
         _isRegistered = true;
+    }
+
+    /// <inheritdoc/>
+    public void Reregister()
+    {
+        if (_disposed || _hwnd == IntPtr.Zero) return;
+        UnregisterHotkeysOnly();
+        RegisterConfiguredHotkeys();
+    }
+
+    private void RegisterConfiguredHotkeys()
+    {
+        if (_hwnd == IntPtr.Zero) return;
+
+        var actions = (HotkeyAction[])Enum.GetValues(typeof(HotkeyAction));
+        foreach (var action in actions)
+        {
+            var binding = _windowSettings?.GetHotkeyBinding(action)
+                          ?? HotkeyBinding.GetDefaults().FirstOrDefault(d => d.Action == action);
+
+            if (binding == null || binding.Key == Key.None) continue;
+
+            uint win32Modifiers = ToWin32Modifiers(binding.Modifiers);
+            int vk = KeyInterop.VirtualKeyFromKey(binding.Key);
+            if (vk <= 0) continue;
+
+            int hotkeyId = BaseHotkeyId + (int)action;
+            if (NativeMethods.RegisterHotKey(_hwnd, hotkeyId, win32Modifiers, (uint)vk))
+            {
+                _registeredIds.Add(hotkeyId);
+            }
+        }
+    }
+
+    private static uint ToWin32Modifiers(ModifierKeys modifiers)
+    {
+        uint flags = NativeMethods.MOD_NOREPEAT;
+        if (modifiers.HasFlag(ModifierKeys.Control)) flags |= NativeMethods.MOD_CONTROL;
+        if (modifiers.HasFlag(ModifierKeys.Alt)) flags |= NativeMethods.MOD_ALT;
+        if (modifiers.HasFlag(ModifierKeys.Shift)) flags |= NativeMethods.MOD_SHIFT;
+        if (modifiers.HasFlag(ModifierKeys.Windows)) flags |= NativeMethods.MOD_WIN;
+        return flags;
+    }
+
+    private void UnregisterHotkeysOnly()
+    {
+        if (_hwnd == IntPtr.Zero) return;
+        foreach (var id in _registeredIds)
+        {
+            NativeMethods.UnregisterHotKey(_hwnd, id);
+        }
+        _registeredIds.Clear();
     }
 
     /// <inheritdoc/>
@@ -86,15 +114,7 @@ public sealed class GlobalHotkeyService : IGlobalHotkeyService
     {
         if (!_isRegistered || _hwnd == IntPtr.Zero) return;
 
-        NativeMethods.UnregisterHotKey(_hwnd, HotkeyIdPlayPause);
-        NativeMethods.UnregisterHotKey(_hwnd, HotkeyIdNext);
-        NativeMethods.UnregisterHotKey(_hwnd, HotkeyIdPrevious);
-        NativeMethods.UnregisterHotKey(_hwnd, HotkeyIdStop);
-        NativeMethods.UnregisterHotKey(_hwnd, HotkeyIdSettings);
-        NativeMethods.UnregisterHotKey(_hwnd, HotkeyIdMute);
-        NativeMethods.UnregisterHotKey(_hwnd, HotkeyIdVolumeUp);
-        NativeMethods.UnregisterHotKey(_hwnd, HotkeyIdVolumeDown);
-        NativeMethods.UnregisterHotKey(_hwnd, HotkeyIdToggleWindow);
+        UnregisterHotkeysOnly();
 
         _hwndSource?.RemoveHook(HwndHook);
         _hwndSource = null;
@@ -107,61 +127,63 @@ public sealed class GlobalHotkeyService : IGlobalHotkeyService
         if (msg == NativeMethods.WM_HOTKEY)
         {
             int id = wParam.ToInt32();
-            switch (id)
+            int actionOffset = id - BaseHotkeyId;
+            if (Enum.IsDefined(typeof(HotkeyAction), actionOffset))
             {
-                case HotkeyIdPlayPause:
-                    if (_viewModel.TogglePlayPauseCommand.CanExecute(null))
-                        _viewModel.TogglePlayPauseCommand.Execute(null);
-                    handled = true;
-                    break;
-
-                case HotkeyIdNext:
-                    if (_viewModel.NextCommand.CanExecute(null))
-                        _viewModel.NextCommand.Execute(null);
-                    handled = true;
-                    break;
-
-                case HotkeyIdPrevious:
-                    if (_viewModel.PreviousCommand.CanExecute(null))
-                        _viewModel.PreviousCommand.Execute(null);
-                    handled = true;
-                    break;
-
-                case HotkeyIdStop:
-                    if (_viewModel.StopCommand.CanExecute(null))
-                        _viewModel.StopCommand.Execute(null);
-                    handled = true;
-                    break;
-
-                case HotkeyIdSettings:
-                    _onOpenSettings?.Invoke();
-                    handled = true;
-                    break;
-
-                case HotkeyIdMute:
-                    if (_viewModel.ToggleMuteCommand.CanExecute(null))
-                        _viewModel.ToggleMuteCommand.Execute(null);
-                    handled = true;
-                    break;
-
-                case HotkeyIdVolumeUp:
-                    AdjustVolume(5.0);
-                    handled = true;
-                    break;
-
-                case HotkeyIdVolumeDown:
-                    AdjustVolume(-5.0);
-                    handled = true;
-                    break;
-
-                case HotkeyIdToggleWindow:
-                    _onToggleWindow?.Invoke();
-                    handled = true;
-                    break;
+                var action = (HotkeyAction)actionOffset;
+                ExecuteAction(action);
+                handled = true;
             }
         }
 
         return IntPtr.Zero;
+    }
+
+    private void ExecuteAction(HotkeyAction action)
+    {
+        switch (action)
+        {
+            case HotkeyAction.PlayPause:
+                if (_viewModel.TogglePlayPauseCommand.CanExecute(null))
+                    _viewModel.TogglePlayPauseCommand.Execute(null);
+                break;
+
+            case HotkeyAction.NextTrack:
+                if (_viewModel.NextCommand.CanExecute(null))
+                    _viewModel.NextCommand.Execute(null);
+                break;
+
+            case HotkeyAction.PreviousTrack:
+                if (_viewModel.PreviousCommand.CanExecute(null))
+                    _viewModel.PreviousCommand.Execute(null);
+                break;
+
+            case HotkeyAction.StopTrack:
+                if (_viewModel.StopCommand.CanExecute(null))
+                    _viewModel.StopCommand.Execute(null);
+                break;
+
+            case HotkeyAction.OpenSettings:
+                _onOpenSettings?.Invoke();
+                break;
+
+            case HotkeyAction.ToggleMute:
+                if (_viewModel.ToggleMuteCommand.CanExecute(null))
+                    _viewModel.ToggleMuteCommand.Execute(null);
+                break;
+
+            case HotkeyAction.VolumeUp:
+                AdjustVolume(5.0);
+                break;
+
+            case HotkeyAction.VolumeDown:
+                AdjustVolume(-5.0);
+                break;
+
+            case HotkeyAction.ToggleWindow:
+                _onToggleWindow?.Invoke();
+                break;
+        }
     }
 
     private void AdjustVolume(double deltaPercent)

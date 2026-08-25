@@ -30,6 +30,9 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
     private string _lastTrackKey = string.Empty;
     private double _windowHeight = 580.0;
     private bool _disposed;
+    private System.Windows.Media.Color? _dominantArtworkColor;
+    private System.Windows.Media.SolidColorBrush? _dynamicAccentBrush;
+    private System.Windows.Media.RadialGradientBrush? _artworkAmbientGlowBrush;
 
     public IReadOnlyList<LyricLine> Lines
     {
@@ -76,6 +79,23 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
         : _mediaService.Current.Title;
 
     public string DisplayArtist => _mediaService.Current.Artist;
+    public string DisplayAlbum => _mediaService.Current.AlbumTitle;
+
+    /// <summary>Extracted dominant color from current artwork (if available).</summary>
+    public System.Windows.Media.Color? DominantArtworkColor => _dominantArtworkColor;
+
+    /// <summary>Dynamic accent brush derived from album artwork when dynamic tinting is enabled.</summary>
+    public System.Windows.Media.Brush? DynamicAccentBrush => (_settingsService?.EnableDynamicTinting ?? true)
+        ? _dynamicAccentBrush
+        : null;
+
+    /// <summary>Ambient background glow radial brush derived from artwork color.</summary>
+    public System.Windows.Media.Brush? ArtworkAmbientGlowBrush => (_settingsService?.EnableDynamicTinting ?? true)
+        ? _artworkAmbientGlowBrush
+        : null;
+
+    /// <summary>True when a dynamic accent brush is active.</summary>
+    public bool HasDynamicAccent => DynamicAccentBrush != null;
 
     public bool IsFuriganaVisible
     {
@@ -218,6 +238,7 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
         _mediaService.SnapshotChanged += OnMediaSnapshotChanged;
         _settingsService.SettingsChanged += OnSettingsChanged;
 
+        UpdateDynamicArtworkColor();
         _ticker.Start(OnTick);
         _ = LoadLyricsForCurrentTrackAsync();
     }
@@ -237,6 +258,9 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
 
         OnPropertyChanged(nameof(DisplayTitle));
         OnPropertyChanged(nameof(DisplayArtist));
+        OnPropertyChanged(nameof(DisplayAlbum));
+
+        UpdateDynamicArtworkColor();
 
         string currentTrackKey = $"{snapshot.Artist.Trim()} - {snapshot.Title.Trim()}";
         if (!string.Equals(_lastTrackKey, currentTrackKey, StringComparison.OrdinalIgnoreCase))
@@ -253,6 +277,48 @@ public sealed class LyricsViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(OpacityPercent));
         OnPropertyChanged(nameof(WindowOpacity));
         OnPropertyChanged(nameof(IsTopmost));
+        OnPropertyChanged(nameof(DominantArtworkColor));
+        OnPropertyChanged(nameof(DynamicAccentBrush));
+        OnPropertyChanged(nameof(ArtworkAmbientGlowBrush));
+        OnPropertyChanged(nameof(HasDynamicAccent));
+    }
+
+    private void UpdateDynamicArtworkColor()
+    {
+        var artwork = _mediaService.Current.Artwork;
+        var color = ColorExtractor.ExtractDominantColor(artwork);
+        if (_dominantArtworkColor != color)
+        {
+            _dominantArtworkColor = color;
+            if (color.HasValue)
+            {
+                var c = color.Value;
+                var accent = new System.Windows.Media.SolidColorBrush(c);
+                accent.Freeze();
+                _dynamicAccentBrush = accent;
+
+                var glow = new System.Windows.Media.RadialGradientBrush(
+                    System.Windows.Media.Color.FromArgb(90, c.R, c.G, c.B),
+                    System.Windows.Media.Color.FromArgb(0, c.R, c.G, c.B))
+                {
+                    Center = new System.Windows.Point(0.2, 0.2),
+                    GradientOrigin = new System.Windows.Point(0.2, 0.2),
+                    RadiusX = 0.85,
+                    RadiusY = 0.85
+                };
+                glow.Freeze();
+                _artworkAmbientGlowBrush = glow;
+            }
+            else
+            {
+                _dynamicAccentBrush = null;
+                _artworkAmbientGlowBrush = null;
+            }
+        }
+        OnPropertyChanged(nameof(DominantArtworkColor));
+        OnPropertyChanged(nameof(DynamicAccentBrush));
+        OnPropertyChanged(nameof(ArtworkAmbientGlowBrush));
+        OnPropertyChanged(nameof(HasDynamicAccent));
     }
 
     private async Task LoadLyricsForCurrentTrackAsync()

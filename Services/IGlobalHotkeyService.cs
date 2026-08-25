@@ -19,6 +19,11 @@ public interface IGlobalHotkeyService : IDisposable
     void Unregister();
 
     /// <summary>
+    /// Re-registers all global hotkeys with current settings.
+    /// </summary>
+    void Reregister();
+
+    /// <summary>
     /// Whether global hotkeys are currently registered and active.
     /// </summary>
     bool IsRegistered { get; }

@@ -47,8 +47,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly IMediaControllerService _service;
     private readonly IUiTicker _ticker;
     private readonly Func<DateTimeOffset> _clock;
+    private readonly IWindowSettingsService? _windowSettingsService;
 
     private MediaSessionSnapshot _snapshot = MediaSessionSnapshot.Empty;
+    private System.Windows.Media.Color? _dominantArtworkColor;
+    private System.Windows.Media.SolidColorBrush? _dynamicAccentBrush;
+    private System.Windows.Media.Brush? _artworkAmbientGlowBrush;
     private bool _isVisible;
     private bool _disposed;
 
@@ -83,6 +87,22 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     /// <summary>Decoded artwork (already frozen by the service). Null until a snapshot supplies it.</summary>
     public System.Windows.Media.ImageSource? Artwork => _snapshot.Artwork;
+
+    /// <summary>Extracted dominant color from current artwork (if available).</summary>
+    public System.Windows.Media.Color? DominantArtworkColor => _dominantArtworkColor;
+
+    /// <summary>Dynamic accent brush derived from album artwork when dynamic tinting is enabled.</summary>
+    public System.Windows.Media.Brush? DynamicAccentBrush => (_windowSettingsService?.EnableDynamicTinting ?? true)
+        ? _dynamicAccentBrush
+        : null;
+
+    /// <summary>Ambient background glow radial brush derived from artwork color.</summary>
+    public System.Windows.Media.Brush? ArtworkAmbientGlowBrush => (_windowSettingsService?.EnableDynamicTinting ?? true)
+        ? _artworkAmbientGlowBrush
+        : null;
+
+    /// <summary>True when a dynamic accent brush is active.</summary>
+    public bool HasDynamicAccent => DynamicAccentBrush != null;
 
     /// <summary>The AUMID of the source app (Spotify, Chrome, etc.). Null when there is no active session.</summary>
     public string? SourceAppUserModelId => _snapshot.SourceAppUserModelId;
@@ -287,13 +307,20 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public MainViewModel(
         IMediaControllerService service,
         IUiTicker ticker,
-        Func<DateTimeOffset>? clock = null)
+        Func<DateTimeOffset>? clock = null,
+        IWindowSettingsService? windowSettingsService = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(ticker);
         _service = service;
         _ticker = ticker;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
+        _windowSettingsService = windowSettingsService;
+
+        if (_windowSettingsService != null)
+        {
+            _windowSettingsService.SettingsChanged += OnSettingsChanged;
+        }
 
         ToggleShuffleCommand = new AsyncRelayCommand(
             execute: () => _service.ToggleShuffleAsync(),
@@ -340,14 +367,66 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _service.SessionListChanged += OnSessionListChanged;
     }
 
+    private void OnSettingsChanged(object? sender, EventArgs e)
+    {
+        if (_disposed) return;
+        OnPropertyChanged(nameof(DynamicAccentBrush));
+        OnPropertyChanged(nameof(ArtworkAmbientGlowBrush));
+        OnPropertyChanged(nameof(HasDynamicAccent));
+    }
+
     private void OnSnapshot(object? sender, MediaSessionSnapshot snapshot)
     {
         if (_disposed) return;
 
+        bool artworkChanged = !ReferenceEquals(_snapshot.Artwork, snapshot.Artwork);
         _snapshot = snapshot;
+
+        if (artworkChanged)
+        {
+            UpdateDynamicArtworkColor();
+        }
+
         UpdateTicker();
         RaiseAllChanged();
         RaiseCommandStates();
+    }
+
+    private void UpdateDynamicArtworkColor()
+    {
+        var color = ColorExtractor.ExtractDominantColor(_snapshot.Artwork);
+        if (_dominantArtworkColor != color)
+        {
+            _dominantArtworkColor = color;
+            if (color.HasValue)
+            {
+                var c = color.Value;
+                var accent = new System.Windows.Media.SolidColorBrush(c);
+                accent.Freeze();
+                _dynamicAccentBrush = accent;
+
+                var glow = new System.Windows.Media.RadialGradientBrush(
+                    System.Windows.Media.Color.FromArgb(90, c.R, c.G, c.B),
+                    System.Windows.Media.Color.FromArgb(0, c.R, c.G, c.B))
+                {
+                    Center = new System.Windows.Point(0.2, 0.2),
+                    GradientOrigin = new System.Windows.Point(0.2, 0.2),
+                    RadiusX = 0.85,
+                    RadiusY = 0.85
+                };
+                glow.Freeze();
+                _artworkAmbientGlowBrush = glow;
+            }
+            else
+            {
+                _dynamicAccentBrush = null;
+                _artworkAmbientGlowBrush = null;
+            }
+        }
+        OnPropertyChanged(nameof(DominantArtworkColor));
+        OnPropertyChanged(nameof(DynamicAccentBrush));
+        OnPropertyChanged(nameof(ArtworkAmbientGlowBrush));
+        OnPropertyChanged(nameof(HasDynamicAccent));
     }
 
     private void OnSessionListChanged(object? sender, EventArgs e)
@@ -464,5 +543,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _ticker.Stop();
         _service.SnapshotChanged    -= OnSnapshot;
         _service.SessionListChanged -= OnSessionListChanged;
+        if (_windowSettingsService != null)
+        {
+            _windowSettingsService.SettingsChanged -= OnSettingsChanged;
+        }
     }
 }

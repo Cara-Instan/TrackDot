@@ -123,12 +123,50 @@ public partial class SettingsWindow : Window
         if (!_isShuttingDown)
         {
             e.Cancel = true;
+            CancelAnyRecording();
             Hide();
         }
     }
 
-    private void Window_KeyDown(object sender, KeyEventArgs e)
+    private void CancelAnyRecording()
     {
+        if (_viewModel != null)
+        {
+            foreach (var item in _viewModel.HotkeyItems)
+            {
+                item.IsRecording = false;
+            }
+        }
+    }
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (_viewModel == null) return;
+
+        var recordingItem = System.Linq.Enumerable.FirstOrDefault(_viewModel.HotkeyItems, i => i.IsRecording);
+        if (recordingItem != null)
+        {
+            var key = e.Key == Key.System ? e.SystemKey : e.Key;
+
+            if (key == Key.Escape)
+            {
+                recordingItem.IsRecording = false;
+                e.Handled = true;
+                return;
+            }
+
+            // Ignore bare modifier presses
+            if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin)
+            {
+                return;
+            }
+
+            var modifiers = Keyboard.Modifiers;
+            recordingItem.Commit(modifiers, key);
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Escape)
         {
             Hide();
@@ -136,8 +174,29 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private void OnRecordHotkeyClicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement elem && elem.DataContext is HotkeySettingItemViewModel item)
+        {
+            if (_viewModel != null)
+            {
+                foreach (var other in _viewModel.HotkeyItems)
+                {
+                    if (other != item) other.IsRecording = false;
+                }
+            }
+            item.IsRecording = !item.IsRecording;
+        }
+    }
+
+    private void OnResetHotkeysClicked(object sender, RoutedEventArgs e)
+    {
+        _viewModel?.ResetHotkeysToDefault();
+    }
+
     private void OnCloseClicked(object sender, RoutedEventArgs e)
     {
+        CancelAnyRecording();
         Hide();
     }
 }

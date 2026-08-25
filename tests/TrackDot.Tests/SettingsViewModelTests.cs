@@ -75,4 +75,47 @@ public class SettingsViewModelTests
         Assert.True(windowSettings.EnableGlobalHotkeys);
         Assert.True(sut.EnableGlobalHotkeys);
     }
+
+    [Fact]
+    public void EnableDynamicTinting_UpdatesWindowSettingsService()
+    {
+        using var themeService = new ThemeService();
+        var startupService = new FakeStartupService();
+        var windowSettings = new WindowSettingsService(initialDynamicTinting: true);
+        using var sut = new SettingsViewModel(startupService, themeService, windowSettings);
+
+        Assert.True(sut.EnableDynamicTinting);
+
+        sut.EnableDynamicTinting = false;
+        Assert.False(windowSettings.EnableDynamicTinting);
+        Assert.False(sut.EnableDynamicTinting);
+    }
+
+    [Fact]
+    public void HotkeyItems_PopulatedAndCanBeRebound()
+    {
+        using var themeService = new ThemeService();
+        var startupService = new FakeStartupService();
+        var windowSettings = new WindowSettingsService(initialHotkeys: HotkeyBinding.GetDefaults());
+        using var sut = new SettingsViewModel(startupService, themeService, windowSettings);
+
+        Assert.NotEmpty(sut.HotkeyItems);
+
+        var playPauseItem = System.Linq.Enumerable.First(sut.HotkeyItems, i => i.Action == HotkeyAction.PlayPause);
+        Assert.Equal("Ctrl+Alt+Space", playPauseItem.GestureText);
+
+        // Simulate recording state
+        playPauseItem.IsRecording = true;
+        Assert.Equal("Press keys...", playPauseItem.GestureText);
+
+        // Commit new shortcut
+        playPauseItem.Commit(System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift, System.Windows.Input.Key.P);
+
+        Assert.Equal("Ctrl+Shift+P", playPauseItem.GestureText);
+        Assert.Equal("Ctrl+Shift+P", windowSettings.GetHotkeyBinding(HotkeyAction.PlayPause).GestureText);
+
+        // Reset to default
+        sut.ResetHotkeysToDefault();
+        Assert.Equal("Ctrl+Alt+Space", playPauseItem.GestureText);
+    }
 }

@@ -70,6 +70,31 @@ public interface IWindowSettingsService
     double LyricsWindowHeight { get; set; }
 
     /// <summary>
+    /// <see langword="true"/> when dynamic palette tinting from album art is enabled.
+    /// </summary>
+    bool EnableDynamicTinting { get; set; }
+
+    /// <summary>
+    /// Configured global system-wide hotkeys.
+    /// </summary>
+    IReadOnlyList<TrackDot.Models.HotkeyBinding> HotkeyBindings { get; set; }
+
+    /// <summary>
+    /// Gets the binding configured for a specific action.
+    /// </summary>
+    TrackDot.Models.HotkeyBinding GetHotkeyBinding(TrackDot.Models.HotkeyAction action);
+
+    /// <summary>
+    /// Updates or sets a binding for a specific action.
+    /// </summary>
+    void SetHotkeyBinding(TrackDot.Models.HotkeyAction action, System.Windows.Input.ModifierKeys modifiers, System.Windows.Input.Key key);
+
+    /// <summary>
+    /// Resets all hotkey bindings to their default keys.
+    /// </summary>
+    void ResetHotkeyBindingsToDefault();
+
+    /// <summary>
     /// Event raised when any window setting changes.
     /// </summary>
     event EventHandler? SettingsChanged;

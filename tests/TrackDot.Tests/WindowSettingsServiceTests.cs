@@ -103,4 +103,37 @@ public class WindowSettingsServiceTests
             PortableMode.IsPortable = false;
         }
     }
+
+    [Fact]
+    public void EnableDynamicTinting_TogglesAndFiresSettingsChanged()
+    {
+        var sut = new WindowSettingsService(initialDynamicTinting: true);
+        bool fired = false;
+        sut.SettingsChanged += (s, e) => fired = true;
+
+        Assert.True(sut.EnableDynamicTinting);
+        sut.EnableDynamicTinting = false;
+
+        Assert.False(sut.EnableDynamicTinting);
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void HotkeyBindings_SetAndReset_FiresSettingsChanged()
+    {
+        var sut = new WindowSettingsService(initialHotkeys: TrackDot.Models.HotkeyBinding.GetDefaults());
+        bool fired = false;
+        sut.SettingsChanged += (s, e) => fired = true;
+
+        var initialBinding = sut.GetHotkeyBinding(TrackDot.Models.HotkeyAction.PlayPause);
+        Assert.Equal("Ctrl+Alt+Space", initialBinding.GestureText);
+
+        sut.SetHotkeyBinding(TrackDot.Models.HotkeyAction.PlayPause, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift, System.Windows.Input.Key.P);
+
+        Assert.True(fired);
+        Assert.Equal("Ctrl+Shift+P", sut.GetHotkeyBinding(TrackDot.Models.HotkeyAction.PlayPause).GestureText);
+
+        sut.ResetHotkeyBindingsToDefault();
+        Assert.Equal("Ctrl+Alt+Space", sut.GetHotkeyBinding(TrackDot.Models.HotkeyAction.PlayPause).GestureText);
+    }
 }

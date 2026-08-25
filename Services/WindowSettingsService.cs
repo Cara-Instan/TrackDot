@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Win32;
 
 namespace TrackDot.Services;
@@ -12,11 +14,102 @@ public sealed class WindowSettingsService : IWindowSettingsService
     private const string TrackDotKeyPath = @"Software\TrackDot";
     private const string PinToTopValueName = "PinToTop";
     private const string OpacityValueName = "OpacityPercent";
+    private const string DynamicTintingValueName = "EnableDynamicTinting";
     private const string GlobalHotkeysValueName = "EnableGlobalHotkeys";
+    private const string HotkeysPrefix = "Hotkey_";
 
     private bool _isPinned;
     private int _opacityPercent;
     private bool _enableGlobalHotkeys;
+    private bool _enableDynamicTinting;
+    private readonly Dictionary<TrackDot.Models.HotkeyAction, TrackDot.Models.HotkeyBinding> _hotkeyBindings = new();
+
+    /// <inheritdoc/>
+    public bool EnableDynamicTinting
+    {
+        get => _enableDynamicTinting;
+        set
+        {
+            if (_enableDynamicTinting == value) return;
+            _enableDynamicTinting = value;
+            SaveValue(DynamicTintingValueName, value ? 1 : 0, d => d.EnableDynamicTinting = value);
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<TrackDot.Models.HotkeyBinding> HotkeyBindings
+    {
+        get
+        {
+            lock (_hotkeyBindings)
+            {
+                return _hotkeyBindings.Values.ToList();
+            }
+        }
+        set
+        {
+            if (value == null) return;
+            lock (_hotkeyBindings)
+            {
+                _hotkeyBindings.Clear();
+                foreach (var b in value)
+                {
+                    _hotkeyBindings[b.Action] = b;
+                    SaveStringValue(HotkeysPrefix + b.Action, b.Serialize(), d => d.CustomHotkeys[b.Action.ToString()] = b.Serialize());
+                }
+            }
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public TrackDot.Models.HotkeyBinding GetHotkeyBinding(TrackDot.Models.HotkeyAction action)
+    {
+        lock (_hotkeyBindings)
+        {
+            if (_hotkeyBindings.TryGetValue(action, out var b))
+                return b;
+
+            // Fallback to default
+            var def = TrackDot.Models.HotkeyBinding.GetDefaults().FirstOrDefault(d => d.Action == action);
+            if (def != null)
+            {
+                _hotkeyBindings[action] = def;
+                return def;
+            }
+
+            return new TrackDot.Models.HotkeyBinding(action, System.Windows.Input.ModifierKeys.None, System.Windows.Input.Key.None);
+        }
+    }
+
+    /// <inheritdoc/>
+    public void SetHotkeyBinding(TrackDot.Models.HotkeyAction action, System.Windows.Input.ModifierKeys modifiers, System.Windows.Input.Key key)
+    {
+        var binding = new TrackDot.Models.HotkeyBinding(action, modifiers, key);
+        lock (_hotkeyBindings)
+        {
+            _hotkeyBindings[action] = binding;
+        }
+        SaveStringValue(HotkeysPrefix + action, binding.Serialize(), d => d.CustomHotkeys[action.ToString()] = binding.Serialize());
+        SettingsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <inheritdoc/>
+    public void ResetHotkeyBindingsToDefault()
+    {
+        var defaults = TrackDot.Models.HotkeyBinding.GetDefaults();
+        lock (_hotkeyBindings)
+        {
+            _hotkeyBindings.Clear();
+            foreach (var b in defaults)
+            {
+                _hotkeyBindings[b.Action] = b;
+                SaveStringValue(HotkeysPrefix + b.Action, b.Serialize(), d => d.CustomHotkeys[b.Action.ToString()] = b.Serialize());
+            }
+        }
+        SettingsChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <inheritdoc/>
     public bool IsPinned
@@ -192,11 +285,14 @@ public sealed class WindowSettingsService : IWindowSettingsService
         bool? initialPinned = null,
         int? initialOpacity = null,
         bool? initialGlobalHotkeys = null,
-        int? initialLyricsOpacity = null)
+        int? initialLyricsOpacity = null,
+        bool? initialDynamicTinting = null,
+        IReadOnlyList<TrackDot.Models.HotkeyBinding>? initialHotkeys = null)
     {
         _isPinned = initialPinned ?? LoadPinToTop();
         _opacityPercent = Math.Clamp(initialOpacity ?? LoadOpacityPercent(), 20, 100);
         _enableGlobalHotkeys = initialGlobalHotkeys ?? LoadEnableGlobalHotkeys();
+        _enableDynamicTinting = initialDynamicTinting ?? LoadBoolValue(DynamicTintingValueName, true, d => d.EnableDynamicTinting);
 
         _lyricsWindowVisible = LoadBoolValue("LyricsWindowVisible", false, d => d.LyricsWindowVisible);
         _lyricsOpacityPercent = Math.Clamp(initialLyricsOpacity ?? LoadIntValue("LyricsOpacityPercent", 85, d => d.LyricsOpacityPercent), 20, 100);
@@ -206,6 +302,51 @@ public sealed class WindowSettingsService : IWindowSettingsService
         _lyricsWindowTop = LoadDoubleValue("LyricsWindowTop", -1.0, d => d.LyricsWindowTop);
         _lyricsWindowWidth = LoadDoubleValue("LyricsWindowWidth", 420.0, d => d.LyricsWindowWidth);
         _lyricsWindowHeight = LoadDoubleValue("LyricsWindowHeight", 580.0, d => d.LyricsWindowHeight);
+
+        if (initialHotkeys != null)
+        {
+            lock (_hotkeyBindings)
+            {
+                foreach (var b in initialHotkeys)
+                {
+                    _hotkeyBindings[b.Action] = b;
+                }
+            }
+        }
+        else
+        {
+            LoadInitialHotkeys();
+        }
+    }
+
+    private void LoadInitialHotkeys()
+    {
+        var defaults = TrackDot.Models.HotkeyBinding.GetDefaults();
+        lock (_hotkeyBindings)
+        {
+            foreach (var def in defaults)
+            {
+                string? stored = null;
+                if (PortableMode.IsPortable)
+                {
+                    var data = LoadPortableSettings();
+                    if (data.CustomHotkeys.TryGetValue(def.Action.ToString(), out var s))
+                        stored = s;
+                }
+                else
+                {
+                    try
+                    {
+                        using var key = Registry.CurrentUser.OpenSubKey(TrackDotKeyPath);
+                        stored = key?.GetValue(HotkeysPrefix + def.Action) as string;
+                    }
+                    catch { }
+                }
+
+                var parsed = TrackDot.Models.HotkeyBinding.Deserialize(def.Action, stored);
+                _hotkeyBindings[def.Action] = parsed ?? def;
+            }
+        }
     }
 
     public class PortableSettingsData
@@ -213,6 +354,8 @@ public sealed class WindowSettingsService : IWindowSettingsService
         public bool PinToTop { get; set; }
         public int OpacityPercent { get; set; } = 100;
         public bool EnableGlobalHotkeys { get; set; } = true;
+        public bool EnableDynamicTinting { get; set; } = true;
+        public Dictionary<string, string> CustomHotkeys { get; set; } = new();
         public bool LyricsWindowVisible { get; set; }
         public int LyricsOpacityPercent { get; set; } = 85;
         public bool LyricsIsTopmost { get; set; } = true;

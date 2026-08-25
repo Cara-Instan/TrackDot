@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using TrackDot.Models;
 using TrackDot.Services;
@@ -112,6 +113,66 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    /// <summary>
+    /// True when dynamic palette tinting from album artwork is enabled.
+    /// </summary>
+    public bool EnableDynamicTinting
+    {
+        get => _windowSettings?.EnableDynamicTinting ?? true;
+        set
+        {
+            if (_windowSettings == null || _windowSettings.EnableDynamicTinting == value) return;
+            _windowSettings.EnableDynamicTinting = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Configurable list of global hotkey items.
+    /// </summary>
+    public System.Collections.ObjectModel.ObservableCollection<HotkeySettingItemViewModel> HotkeyItems { get; } = new();
+
+    /// <summary>
+    /// Resets all global hotkeys to default bindings.
+    /// </summary>
+    public void ResetHotkeysToDefault()
+    {
+        _windowSettings?.ResetHotkeyBindingsToDefault();
+        RefreshHotkeyItems();
+    }
+
+    public void RefreshHotkeyItems()
+    {
+        foreach (var item in HotkeyItems)
+        {
+            var binding = _windowSettings?.GetHotkeyBinding(item.Action);
+            if (binding != null)
+            {
+                item.UpdateGesture(binding.GestureText);
+            }
+        }
+    }
+
+    private void PopulateHotkeyItems()
+    {
+        HotkeyItems.Clear();
+        var actions = (HotkeyAction[])Enum.GetValues(typeof(HotkeyAction));
+        foreach (var action in actions)
+        {
+            var binding = _windowSettings?.GetHotkeyBinding(action)
+                ?? HotkeyBinding.GetDefaults().FirstOrDefault(d => d.Action == action)
+                ?? new HotkeyBinding(action, System.Windows.Input.ModifierKeys.None, System.Windows.Input.Key.None);
+            var item = new HotkeySettingItemViewModel(action, binding.DisplayName, binding.GestureText, OnSaveHotkeyBinding);
+            HotkeyItems.Add(item);
+        }
+    }
+
+    private void OnSaveHotkeyBinding(HotkeyAction action, System.Windows.Input.ModifierKeys modifiers, System.Windows.Input.Key key)
+    {
+        _windowSettings?.SetHotkeyBinding(action, modifiers, key);
+        RefreshHotkeyItems();
+    }
+
     /// <summary>Convenience helper for RadioButton binding.</summary>
     public bool IsSystemTheme
     {
@@ -170,6 +231,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         {
             _windowSettings.SettingsChanged += OnWindowSettingsChanged;
         }
+
+        PopulateHotkeyItems();
     }
 
     private void OnWindowSettingsChanged(object? sender, EventArgs e)
@@ -177,6 +240,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(OpacityPercent));
         OnPropertyChanged(nameof(OpacityDisplayText));
         OnPropertyChanged(nameof(EnableGlobalHotkeys));
+        OnPropertyChanged(nameof(EnableDynamicTinting));
+        RefreshHotkeyItems();
     }
 
     /// <inheritdoc/>
@@ -195,4 +260,57 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
             _windowSettings.SettingsChanged -= OnWindowSettingsChanged;
         }
     }
+}
+
+/// <summary>
+/// Individual hotkey configuration item view-model.
+/// </summary>
+public sealed class HotkeySettingItemViewModel : INotifyPropertyChanged
+{
+    private readonly Action<HotkeyAction, System.Windows.Input.ModifierKeys, System.Windows.Input.Key> _saveAction;
+    private string _gestureText;
+    private bool _isRecording;
+
+    public HotkeyAction Action { get; }
+    public string DisplayName { get; }
+    public string GestureText => _isRecording ? "Press keys..." : _gestureText;
+    public bool IsRecording
+    {
+        get => _isRecording;
+        set
+        {
+            if (_isRecording == value) return;
+            _isRecording = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(GestureText));
+        }
+    }
+
+    public HotkeySettingItemViewModel(
+        HotkeyAction action,
+        string displayName,
+        string gestureText,
+        Action<HotkeyAction, System.Windows.Input.ModifierKeys, System.Windows.Input.Key> saveAction)
+    {
+        Action = action;
+        DisplayName = displayName;
+        _gestureText = gestureText;
+        _saveAction = saveAction;
+    }
+
+    public void UpdateGesture(string gestureText)
+    {
+        _gestureText = gestureText;
+        IsRecording = false;
+        OnPropertyChanged(nameof(GestureText));
+    }
+
+    public void Commit(System.Windows.Input.ModifierKeys modifiers, System.Windows.Input.Key key)
+    {
+        _saveAction(Action, modifiers, key);
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
