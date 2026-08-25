@@ -379,12 +379,58 @@ public sealed class MediaControllerService : IMediaControllerService
         var aumid = session.SourceAppUserModelId;
         var (vol, muted) = _volumeService.GetVolumeInfo(aumid);
 
+        // Read playback info and timeline immediately from the newly selected session
+        // so that we don't display stale playback/position from the previous session.
+        GlobalSystemMediaTransportControlsSessionPlaybackInfo? playbackInfo = null;
+        try { playbackInfo = session.GetPlaybackInfo(); } catch { }
+
+        GlobalSystemMediaTransportControlsSessionTimelineProperties? timeline = null;
+        try { timeline = session.GetTimelineProperties(); } catch { }
+
+        var controlsShape = playbackInfo?.Controls is { } c
+            ? new MediaPropertyMapper.ControlsShape(
+                CanPlay:                 c.IsPlayEnabled,
+                CanPause:                c.IsPauseEnabled,
+                CanStop:                 c.IsStopEnabled,
+                CanGoPrevious:           c.IsPreviousEnabled,
+                CanGoNext:               c.IsNextEnabled,
+                CanSeek:                 c.IsPlaybackPositionEnabled,
+                CanChangeShuffle:        c.IsShuffleEnabled,
+                CanChangeAutoRepeatMode: c.IsRepeatEnabled)
+            : null;
+
+        var playbackInfoShape = playbackInfo != null
+            ? new MediaPropertyMapper.PlaybackInfoShape(
+                Status:          playbackInfo.PlaybackStatus,
+                Controls:        controlsShape,
+                IsShuffleActive: playbackInfo.IsShuffleActive,
+                AutoRepeatMode:  playbackInfo.AutoRepeatMode)
+            : null;
+
+        var lastUpdated = timeline != null && timeline.LastUpdatedTime != default
+            ? timeline.LastUpdatedTime
+            : DateTimeOffset.UtcNow;
+
+        var timelineShape = timeline != null
+            ? new MediaPropertyMapper.TimelineShape(
+                Position:    timeline.Position,
+                StartTime:   timeline.StartTime,
+                EndTime:     timeline.EndTime,
+                LastUpdated: lastUpdated)
+            : null;
+
+        var playback = MediaPropertyMapper.BuildPlaybackSnapshot(
+            playbackInfo: playbackInfoShape,
+            timeline:     timelineShape,
+            capturedAt:   lastUpdated);
+
         var prevSnapshot = Volatile.Read(ref _currentSnapshot);
         var sessionSnapshot = prevSnapshot with
         {
             SourceAppUserModelId = aumid,
-            Volume = vol,
-            IsMuted = muted
+            Playback             = playback,
+            Volume               = vol,
+            IsMuted              = muted
         };
         Publish(sessionSnapshot);
 
@@ -619,7 +665,7 @@ public sealed class MediaControllerService : IMediaControllerService
         var playback = MediaPropertyMapper.BuildPlaybackSnapshot(
             playbackInfo: playbackInfoShape,
             timeline:     timelineShape,
-            capturedAt:   DateTimeOffset.UtcNow);
+            capturedAt:   previous.Playback.TimelineUpdatedAt != default ? previous.Playback.TimelineUpdatedAt : DateTimeOffset.UtcNow);
 
         var next = previous with { Playback = playback };
 
@@ -631,11 +677,15 @@ public sealed class MediaControllerService : IMediaControllerService
     {
         if (_disposed) return;
 
+        var lastUpdated = timeline.LastUpdatedTime != default
+            ? timeline.LastUpdatedTime
+            : DateTimeOffset.UtcNow;
+
         var timelineShape = new MediaPropertyMapper.TimelineShape(
             Position:    timeline.Position,
             StartTime:   timeline.StartTime,
             EndTime:     timeline.EndTime,
-            LastUpdated: DateTimeOffset.UtcNow);
+            LastUpdated: lastUpdated);
 
         var previous = Volatile.Read(ref _currentSnapshot);
         var playbackInfoShape = new MediaPropertyMapper.PlaybackInfoShape(

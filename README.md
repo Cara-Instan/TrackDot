@@ -17,16 +17,17 @@ If you’ve ever switched between OS environments, you know that macOS and Linux
 
 ## What it does
 
-TrackDot sits quietly in your system tray and surfaces **what's playing right now** through Windows' built-in media system (SMTC). It works with any player that publishes to SMTC — Spotify, Chrome, Edge, Groove, Windows Media Player, and VLC (with SMTC enabled).
+TrackDot sits quietly in your system tray and surfaces **what's playing right now** through Windows' built-in media system (SMTC). It works with any player that publishes to SMTC — Spotify, Chrome, Edge, Apple Music, Tidal, Groove, Windows Media Player, and VLC (with SMTC enabled).
 
 | | |
 |---|---|
-| 🎵 **Now playing** | Title, artist, source app, album art |
-| 🎮 **Transport** | Previous / Play–Pause / Stop / Next |
-| 🔊 **Volume** | Per-source slider + mute, 5% steps |
-| 📌 **Always there** | Tray-only — no taskbar clutter |
-| ⌨️ **Hotkeys** | System-wide and local popover shortcuts |
-| 🎤 **Lyrics** | Optional synced lyrics with Japanese romaji + furigana |
+| 🎵 **Now playing** | Title, artist, source app, high-res artwork, and dynamic ambient glow |
+| 🎮 **Transport** | Previous / Play–Pause / Stop / Next, plus Shuffle & Repeat modes |
+| 🔊 **Volume & Seek** | Per-source slider + mute, 5% steps, and timeline scrubbing |
+| 📌 **Always there** | Tray-only — no taskbar clutter, draggable, and pinnable |
+| ⌨️ **Configurable Hotkeys** | Fully customizable system-wide and local popover shortcuts |
+| 🎤 **Synced Lyrics & HUD** | Synced lyrics window + floating karaoke HUD overlay with Japanese romaji/furigana & translations |
+| 🎮 **Discord Rich Presence** | Optional, privacy-first Discord RPC status with album art resolution & app whitelist |
 
 ---
 
@@ -40,12 +41,12 @@ TrackDot sits quietly in your system tray and surfaces **what's playing right no
 ### Keyboard shortcuts
 ![TrackDot keyboard shortcuts window](docs/images/keyboard-shortcut.png)
 
-*A built-in reference window for every shortcut.*
+*A built-in reference window for every shortcut — rebindable in Settings.*
 
 ### Synced lyrics (with Japanese support)
 ![TrackDot lyrics window](docs/images/lyrics-window.png)
 
-*Time-synced lyrics with romaji readings above each kanji/kana word.*
+*Time-synced lyrics with romaji readings above each kanji/kana word and optional translation lines.*
 
 ---
 
@@ -81,39 +82,44 @@ The popover appears above the tray. Play some music in any SMTC-aware player and
 | Click | What happens |
 |---|---|
 | **Left-click** | Show / hide the popover |
-| **Right-click** | Open the menu (Keyboard Shortcuts, Settings, About, Exit) |
+| **Right-click** | Open the menu (Lyrics, Floating HUD, Keyboard Shortcuts, Settings, About, Exit) |
 | **Drag the popover** | Move it anywhere — your position is remembered |
 | **Pin icon in the popover** | Keep it open across clicks elsewhere |
 
-### Keyboard shortcuts
+### Key Features
 
-Open the full reference from **tray menu → Keyboard Shortcuts** any time. Highlights:
+#### 🎤 Synced Lyrics & Floating HUD Overlay
+- **Lyrics Window:** Click the lyrics icon in the popover or tray menu. Fetches time-synced lyrics from [Unison](https://unison.boidu.dev) with automatic fallback to [LRCLIB](https://lrclib.net).
+- **Floating HUD (Karaoke Overlay):** A lightweight, resizable overlay that stays above full-screen apps and games. Supports click-through locking (`Lock HUD`), adjustable font size (14px–60px), and opacity.
+- **Japanese Furigana & Romaji:** Japanese tracks automatically display ruby furigana and romaji readings above kanji/kana words.
+- **Secondary Translations:** Toggle secondary translated lyric lines when available.
+- **Timing Offset Adjustment:** Fine-tune lyric synchronization on the fly with ±0.5s offset controls.
+- **Local File Support:** Drag and drop `.lrc` or `.ttml` files directly into the lyrics window.
 
-| Shortcut | Action |
-|---|---|
-| `Alt + Shift + T` | Toggle the popover from anywhere |
-| `Ctrl + Alt + Space` | Play / Pause globally |
-| `Ctrl + Alt + →` / `←` | Next / Previous track |
-| `Ctrl + Alt + ↑` / `↓` | Volume up / down (5% steps) |
-| `Ctrl + Alt + M` | Mute / unmute |
-| `Esc` (with popover focused) | Hide the popover |
+#### 🎮 Discord Rich Presence (RPC)
+- Broadcast your current playback status directly to Discord via local IPC named pipes without requiring personal tokens or accounts.
+- Displays high-resolution album artwork automatically resolved via iTunes Search API and Deezer fallback.
+- **Privacy First:** Newly detected media applications are disabled by default. You choose exactly which apps share activity via the Allowed Source Applications whitelist.
+- Configurable display options: elapsed/remaining time counters, album name, and paused status.
 
-See [Keyboard Shortcuts & Global Hotkeys](#keyboard-shortcuts--global-hotkeys) below for the full list.
+#### 🎨 Dynamic Album Art Glow & Palette Tinting
+- Automatically extracts dominant colors from the current track's album art.
+- Renders an ambient soft glow behind the popover and lyrics HUD.
+- Subtly tints badges, highlights, and controls with the album's dynamic accent palette.
+
+---
 
 ### Settings
 
-**Tray menu → Settings** opens a single window with four sections:
+**Tray menu → Settings** opens a comprehensive settings window organized into sections:
 
-- **Appearance** — System / Dark / Light theme
-- **Popover Opacity** — Slider from 20% to 100%
-- **Shortcuts** — Enable / disable system-wide hotkeys
-- **Startup** — Launch TrackDot automatically when you sign in
+- **Appearance** — System / Dark / Light theme mode, and Dynamic Album Art Palette Tinting & Ambient Glow toggle.
+- **Lyrics & Floating HUD** — Secondary translation toggle, click-through mode lock, HUD Opacity, Popover Opacity, and HUD Font Size slider.
+- **Shortcuts & Global Hotkeys** — Enable/disable system-wide hotkeys, interactive shortcut recorder to rebind any hotkey, and a **Reset Defaults** button.
+- **Discord Rich Presence & Privacy** — Master toggle for Discord RPC, options for timestamps, album name, pause state, and the **Allowed Source Applications** whitelist manager.
+- **Startup** — Launch TrackDot automatically when you sign in to Windows.
 
 All changes save instantly — no Apply button needed.
-
-### Lyrics window
-
-**Right-click the tray icon → Lyrics** (or the popover's lyrics button). Time-synced lyrics load from [Unison](https://unison.boidu.dev) (with automatic fallback to [lrclib.net](https://lrclib.net)); Japanese tracks get romaji + furigana automatically. Opacity, topmost, and window position persist across launches.
 
 ---
 
@@ -123,17 +129,57 @@ All changes save instantly — no Apply button needed.
 |---|---|
 | **OS** | Windows 10 (build 19041 or later) or Windows 11 — 64-bit |
 | **.NET 8 Desktop Runtime** | Pre-installed on modern Windows 11. Bundled in the Portable edition. |
-| **Player** | Any SMTC-publishing source — Spotify, Chrome/Edge, Groove, WMP, or VLC with SMTC integration enabled |
+| **Player** | Any SMTC-publishing source — Spotify, Apple Music, Tidal, Chrome/Edge, Groove, WMP, or VLC with SMTC integration enabled |
 
 ---
 
-## What stays on your computer
+## What stays on your computer & Privacy
 
-**Nothing is uploaded.** TrackDot does not phone home, has no telemetry, and no analytics SDK.
+**TrackDot is built with a local-first, zero-telemetry architecture.** TrackDot has no user accounts, no telemetry SDKs, no analytics trackers, and no background reporting.
 
-- The only network call is the **lyrics window**, which fetches from `unison.boidu.dev` (and `lrclib.net` as fallback) only when you open it.
-- Settings are stored in the Windows registry (`HKCU\Software\TrackDot`) — except in **Portable mode**, where they live in `settings.json` next to the executable.
-- A crash log is written to `%LocalAppData%\TrackDot\crash.log` only if something goes wrong.
+- **Local Storage:** Settings are stored in the Windows registry (`HKCU\Software\TrackDot`) — except in **Portable mode**, where everything lives in `settings.json` next to the executable.
+- **Local IPC:** Discord RPC communicates purely over local Windows Named Pipes (`\\.\pipe\discord-ipc-0`) to your running Discord client.
+- **Network Calls (Optional Features Only):**
+  - **Lyrics:** Fetches lyrics from `unison.boidu.dev` and `lrclib.net` only when a lyrics window is open.
+  - **Discord Artwork Lookup:** Queries `itunes.apple.com` and `api.deezer.com` only when Discord RPC is enabled for an allowed app to resolve album art URLs.
+- **Crash Logs:** Written locally to `%LocalAppData%\TrackDot\crash.log` only if an unhandled error occurs. Never uploaded automatically.
+
+For more details, see [`PRIVACY.md`](PRIVACY.md) and [`TERMS.md`](TERMS.md).
+
+---
+
+## Keyboard Shortcuts & Global Hotkeys
+
+### Global Hotkeys (System-Wide, Customizable)
+
+All global shortcuts can be customized in **Settings → Shortcuts & Global Hotkeys**:
+
+| Action | Default Hotkey |
+|---|---|
+| Toggle Popover | `Alt + Shift + T` |
+| Play / Pause | `Ctrl + Alt + Space` |
+| Next Track | `Ctrl + Alt + Right` |
+| Previous Track | `Ctrl + Alt + Left` |
+| Stop Track | `Ctrl + Alt + .` |
+| Volume Up / Down | `Ctrl + Alt + Up` / `Down` (5% steps) |
+| Mute / Unmute | `Ctrl + Alt + M` |
+| Open Settings | `Ctrl + Alt + S` |
+| Toggle Lyrics Window | `Ctrl + Alt + L` |
+| Toggle Floating Lyrics HUD | `Ctrl + Alt + H` |
+
+### Local Popover Shortcuts (when the popover is focused)
+
+| Action | Keys |
+|---|---|
+| Play / Pause | `Space`, `K`, or hardware Media Play/Pause |
+| Next Track | `Right Arrow`, `L`, or hardware Media Next |
+| Previous Track | `Left Arrow`, `J`, or hardware Media Previous |
+| Stop Track | `S`, or hardware Media Stop |
+| Volume Up / Down | `Up Arrow` / `Down Arrow` |
+| Mute / Unmute | `M` |
+| Toggle Pin | `P` |
+| Open Settings | `O` or `,` |
+| Hide Popover | `Esc` |
 
 ---
 
@@ -142,26 +188,24 @@ All changes save instantly — no Apply button needed.
 <details>
 <summary><strong>Build from source</strong></summary>
 
-From a clean checkout in **git-bash** (or any POSIX shell):
+From a clean checkout in **git-bash** (or PowerShell / Command Prompt):
 
 ```bash
-cd "C:/Users/Herlandro Ando/Documents/Ando/sites_win/TrackDot"
-
-# 1. Restore + build Debug.
+# 1. Restore + build Debug
 dotnet restore TrackDot.sln
 dotnet build TrackDot.sln -c Debug --no-restore
 
-# 2. Run the full test suite (Debug).
+# 2. Run the full test suite (Debug)
 dotnet test TrackDot.sln -c Debug --no-build
 
-# 3. Confirm Release builds clean too.
+# 3. Confirm Release builds clean too
 dotnet build TrackDot.sln -c Release
 
-# 4. Launch from the built binary (NOT `dotnet run`).
+# 4. Launch from the built binary (NOT dotnet run)
 ./bin/x64/Release/net8.0-windows10.0.19041.0/TrackDot.exe
 ```
 
-Expected test result: **Passed: 293, Failed: 0, Skipped: 0** (both Debug and Release).
+Expected test result: **Passed: 365, Failed: 0, Skipped: 0** (both Debug and Release).
 </details>
 
 <details>
@@ -171,36 +215,42 @@ Expected test result: **Passed: 293, Failed: 0, Skipped: 0** (both Debug and Rel
 TrackDot/
 ├── App.xaml(.cs)               Composition root, tray resources, exception-logger bootstrap
 ├── Views/                       View layer
-│   ├── MainWindow.xaml(.cs)     Floating popover window
-│   ├── SettingsWindow.xaml(.cs) Settings dialog (single-instance, hidden on close)
+│   ├── MainWindow.xaml(.cs)     Floating popover window (ambient glow, marquee, transport)
+│   ├── SettingsWindow.xaml(.cs) Settings dialog (theme, HUD, hotkeys, Discord RPC)
 │   ├── HotkeysWindow.xaml(.cs)  Keyboard-shortcuts reference window
-│   ├── AboutWindow.xaml(.cs)    About dialog
-│   └── LyricsWindow.xaml(.cs)   Synced lyrics window (Kawazu romaji/furigana)
+│   ├── LyricsWindow.xaml(.cs)   Synced lyrics window (Kawazu romaji/furigana, translation)
+│   ├── LyricsHudWindow.xaml(.cs) Always-on-top floating lyrics HUD overlay (click-through)
+│   └── AboutWindow.xaml(.cs)    About dialog
 ├── Commands/                    AsyncRelayCommand (ICommand wrapper with re-entrancy latch)
-├── Converters/                  TimeSpanTextConverter, PlayPauseIconConverter
+├── Converters/                  TimeSpanTextConverter, PlayPauseIconConverter, SliderFillWidthConverter
 ├── Models/                      Immutable records: snapshot, playback, capabilities,
-│                                LyricLine, FuriganaSegment, AppThemeMode
+│                                LyricLine, FuriganaSegment, AppThemeMode, HotkeyBinding,
+│                                HotkeyAction, SourceAppSetting
 ├── Services/                    SMTC core, mapper, ThumbnailDecoder, ProgressInterpolator,
 │                                SingleInstanceGuard, tray icon + handle, WindowPlacementService,
 │                                UnhandledExceptionLogger, StartupService, registry adapter,
 │                                AudioVolumeService, GlobalHotkeyService, LyricsService,
-│                                WindowSettingsService, ThemeService + WpfThemePaletteApplier,
+│                                DiscordRpcService, DiscordNamedPipeIpcClient, ArtworkLookupService,
+│                                ColorExtractor, WindowSettingsService, ThemeService + WpfThemePaletteApplier,
 │                                IPopoverHost, PortableMode, FileUnhandledExceptionSink
-├── ViewModels/                  MainViewModel, SettingsViewModel, LyricsViewModel
+├── ViewModels/                  MainViewModel, SettingsViewModel, LyricsViewModel, HotkeysViewModel
 ├── TrackDot.csproj              TFM net8.0-windows10.0.19041.0, x64, UseWPF=true
 ├── TrackDot.sln
-└── tests/TrackDot.Tests/        293 xUnit tests; EnableDefaultCompileItems=false
+└── tests/TrackDot.Tests/        365 xUnit tests; EnableDefaultCompileItems=false
 ```
 </details>
 
 <details>
 <summary><strong>Architecture highlights</strong></summary>
 
-- **ThemeService + WpfThemePaletteApplier split.** `IThemeService` is a pure state machine (System / Dark / Light); `WpfThemePaletteApplier` subscribes and translates into the WPF palette swap. The split keeps the state-machine unit-testable without WPF.
-- **IPopoverHost.** The popover implements `IPopoverHost` and the tray icon's `Show / Hide` decisions read `IsPopoverVisible` through the host — *not* from a cached bool. A stale cache was the root cause of "I have to click the tray icon twice".
+- **ThemeService + WpfThemePaletteApplier split.** `IThemeService` is a pure state machine (System / Dark / Light); `WpfThemePaletteApplier` subscribes and translates into the WPF palette swap. The split keeps the state machine unit-testable without WPF.
+- **Dynamic Color Extraction & Ambient Glow.** `ColorExtractor` samples album artwork colors to calculate dominant and accent brushes, driving the ambient radial backdrop in both the popover and lyrics HUD.
+- **Discord RPC via Local Named Pipes.** `DiscordRpcService` uses `DiscordNamedPipeIpcClient` to communicate directly with Discord's IPC socket (`discord-ipc-0`..`9`). High-resolution album artwork is resolved through `ArtworkLookupService` (iTunes Search API + Deezer fallback) and cached in-memory.
+- **Privacy-First App Whitelist.** Discovered SMTC source applications are saved to registry/JSON settings but disabled by default for Discord Rich Presence until explicitly allowed by the user.
+- **Interactive Global Hotkey Re-binding.** `GlobalHotkeyService` dynamically registers Win32 hotkeys via `RegisterHotKey` on the popover HWND, backed by serialized bindings and an interactive key-capture loop in `SettingsViewModel`.
+- **IPopoverHost.** The popover implements `IPopoverHost` and the tray icon's `Show / Hide` decisions read `IsPopoverVisible` through the host — *not* from a cached bool.
 - **Settings storage split by concern.** `StartupService` owns `HKCU\…\Run\TrackDot`; `WindowSettingsService` owns `HKCU\Software\TrackDot`. Portable mode consolidates both into `settings.json`.
-- **Global hotkeys are pinned to the popover HWND.** Registered via `RegisterHotKey` against the popover's `HwndSource`. Until the user opens the popover once, no HWND exists and global hotkeys silently no-op.
-- **Lyrics is the only network feature.** `LyricsService` is the only place that constructs an `HttpClient`. Disable by never opening the lyrics window.
+- **Lyrics & HUD Multi-Format Support.** `LyricsService` parses synchronized LRC timestamps and TTML XML formats with automatic Kawazu Japanese romaji/furigana ruby rendering.
 - **Volume lookup is PID-based, not AUMID-based.** A two-stage heuristic against `IAudioSessionManager2` matches the AUMID to a process and its renderer's display name — covers Spotify's renderer-process split and Electron players.
 </details>
 
@@ -247,51 +297,25 @@ See [`docs/RELEASE.md`](docs/RELEASE.md) for the full release pipeline.
 
 ---
 
-## Keyboard Shortcuts & Global Hotkeys
-
-### Global Hotkeys (System-Wide)
-
-| Action | Hotkey |
-|---|---|
-| Toggle Popover | `Alt + Shift + T` |
-| Play / Pause | `Ctrl + Alt + Space` |
-| Next Track | `Ctrl + Alt + Right` |
-| Previous Track | `Ctrl + Alt + Left` |
-| Stop Track | `Ctrl + Alt + .` |
-| Mute / Unmute | `Ctrl + Alt + M` |
-| Volume Up / Down | `Ctrl + Alt + Up` / `Down` |
-| Open Settings | `Ctrl + Alt + S` |
-
-### Local Popover Shortcuts (when the popover is focused)
-
-| Action | Keys |
-|---|---|
-| Play / Pause | `Space`, `K`, or hardware Media Play/Pause |
-| Next Track | `Right Arrow`, `L`, or hardware Media Next |
-| Previous Track | `Left Arrow`, `J`, or hardware Media Previous |
-| Stop Track | `S`, or hardware Media Stop |
-| Volume Up / Down | `Up Arrow` / `Down Arrow` |
-| Mute / Unmute | `M` |
-| Toggle Pin | `P` |
-| Open Settings | `O` or `,` |
-| Hide Popover | `Esc` |
-
----
-
 ## Known limitations
 
 - **OS-selected session only.** TrackDot follows `GetCurrentSession()`. If Windows picks the wrong session (rare; usually when two SMTC sources are running and one has stale audio focus), TrackDot shows Windows' choice.
 - **VLC needs SMTC enabled.** Toggle "Share media with Windows Media Player" in VLC's preferences, otherwise VLC won't appear as a source. Some VLC versions accept Previous / Next but ignore Stop.
 - **Volume control requires an audio session.** Some SMTC sources (rare; mostly UWP media) do not own an audio session — the slider then shows the last value and writes are silently dropped.
 - **Single source per process.** Manual source selection is deferred — the service contract already exposes `SourceAppUserModelId` so a picker could be added without changing the downstream contract.
-- **Lyrics lookup is best-effort.** Unison and LRCLIB are community-maintained; not every track has synced lyrics, and Japanese tracks occasionally surface an English translation instead.
+- **Lyrics & Artwork lookup is best-effort.** Unison, LRCLIB, and iTunes/Deezer search APIs are community/public services; not every song has synced lyrics or matchable high-res artwork.
 
 ---
 
-## License
+## License & Legal
 
-MIT. See the repository header / package metadata.
+- **License:** MIT. See [`LICENSE`](LICENSE) for details.
+- **Terms of Service:** See [`TERMS.md`](TERMS.md) for terms regarding usage, third-party integrations, and disclaimers.
+- **Privacy Policy:** See [`PRIVACY.md`](PRIVACY.md) for data handling and zero-telemetry commitments.
 
+### Third-Party Components & APIs
 - Tray icon component: [`Hardcodet.NotifyIcon.Wpf`](https://github.com/Hardcodet/notifyicon-wpf) 1.1.0 — MIT.
-- Japanese romaji / furigana conversion: [`Kawazu`](https://github.com/herlandroando/Kawazu) 1.0.0 — IPA dictionary is bundled with the package.
+- Japanese romaji / furigana conversion: [`Kawazu`](https://github.com/Cutano/Kawazu) 1.1.4 — IPA dictionary is bundled with the package.
 - Lyrics lookup: [Unison](https://unison.boidu.dev) (ODbL-1.0) and [lrclib.net](https://lrclib.net) — public community-maintained lyrics APIs.
+- Album Artwork resolution: [iTunes Search API](https://itunes.apple.com) and [Deezer Search API](https://api.deezer.com) — public search endpoints for high-res cover art lookup.
+- Discord Rich Presence: Discord IPC named pipes via local client integration.
