@@ -35,6 +35,8 @@ public partial class MainWindow : Window, IPopoverHost
     public MainWindow()
     {
         InitializeComponent();
+        SeekSlider.AddHandler(UIElement.PreviewMouseLeftButtonDownEvent, new MouseButtonEventHandler(SeekSlider_PreviewMouseLeftButtonDown), handledEventsToo: true);
+        SeekSlider.AddHandler(UIElement.PreviewMouseLeftButtonUpEvent, new MouseButtonEventHandler(SeekSlider_MouseLeftButtonUp), handledEventsToo: true);
     }
 
     /// <summary>
@@ -186,14 +188,38 @@ public partial class MainWindow : Window, IPopoverHost
 
     private void SeekSlider_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (sender is not System.Windows.Controls.Slider slider) return;
+        if (_viewModel is null || _viewModel.DurationSeconds <= 0) return;
+
         _isUserSeeking = true;
+        _viewModel.IsUserSeeking = true;
+
+        var pos = e.GetPosition(slider);
+        if (slider.ActualWidth > 0)
+        {
+            double ratio = Math.Clamp(pos.X / slider.ActualWidth, 0.0, 1.0);
+            slider.Value = ratio * _viewModel.DurationSeconds;
+        }
+
+        slider.CaptureMouse();
     }
 
     private void SeekSlider_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (sender is not System.Windows.Controls.Slider slider) return;
+
+        if (slider.IsMouseCaptured)
+        {
+            slider.ReleaseMouseCapture();
+        }
+
         if (!_isUserSeeking) return;
         _isUserSeeking = false;
-        if (sender is not System.Windows.Controls.Slider slider) return;
+        if (_viewModel != null)
+        {
+            _viewModel.IsUserSeeking = false;
+        }
+
         if (_viewModel?.SeekCommand is not { } cmd) return;
         if (cmd.CanExecute(slider.Value))
             cmd.Execute(slider.Value);
@@ -210,6 +236,12 @@ public partial class MainWindow : Window, IPopoverHost
 
         double ratio = Math.Clamp(pos.X / actualWidth, 0.0, 1.0);
         double targetSeconds = ratio * _viewModel.DurationSeconds;
+
+        if (_isUserSeeking && slider.IsMouseCaptured)
+        {
+            slider.Value = targetSeconds;
+        }
+
         slider.ToolTip = $"Seek to {MainViewModelHelpers.FormatTime(TimeSpan.FromSeconds(targetSeconds))}";
     }
 

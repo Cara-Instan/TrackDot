@@ -150,7 +150,25 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>True when seeking is supported by the active media session.</summary>
-    public bool CanSeek => _snapshot.Playback.Capabilities.CanSeek;
+    public bool CanSeek => _snapshot.Playback.Capabilities.CanSeek || DurationSeconds > 0;
+
+    private bool _isUserSeeking;
+
+    /// <summary>
+    /// True when the user is actively dragging or holding the seek slider.
+    /// When true, the UI ticker skips updating <see cref="PositionSeconds"/>
+    /// so the slider thumb does not jump back to the interpolated time.
+    /// </summary>
+    public bool IsUserSeeking
+    {
+        get => _isUserSeeking;
+        set
+        {
+            if (_isUserSeeking == value) return;
+            _isUserSeeking = value;
+            OnPropertyChanged();
+        }
+    }
 
     /// <summary>Duration in seconds. Zero when the source has not reported a duration.</summary>
     public double DurationSeconds => _snapshot.Playback.EndTime.TotalSeconds;
@@ -349,7 +367,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
         SeekCommand = new AsyncRelayCommand<double>(
             execute: seconds => _service.SeekAsync(seconds),
-            canExecute: _ => _snapshot.Playback.Capabilities.CanSeek);
+            canExecute: _ => CanSeek);
 
         SelectSessionCommand = new AsyncRelayCommand<string>(
             execute: aumid => _service.SelectSessionAsync(aumid ?? string.Empty),
@@ -458,8 +476,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         if (_disposed) return;
         UpdateTicker();
-        OnPropertyChanged(nameof(PositionSeconds));
-        OnPropertyChanged(nameof(ElapsedTimeText));
+        if (!_isUserSeeking)
+        {
+            OnPropertyChanged(nameof(PositionSeconds));
+            OnPropertyChanged(nameof(ElapsedTimeText));
+        }
     }
 
     private void RaiseAllChanged()

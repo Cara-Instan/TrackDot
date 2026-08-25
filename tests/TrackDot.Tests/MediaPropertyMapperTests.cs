@@ -315,4 +315,34 @@ public sealed class MediaPropertyMapperTests
         Assert.True(snapshot.Playback.Capabilities.CanChangeShuffle);
         Assert.True(snapshot.Playback.Capabilities.CanChangeAutoRepeatMode);
     }
+
+    [Fact]
+    public void BuildSnapshot_enables_CanSeek_when_controls_CanSeek_is_false_but_timeline_has_duration()
+    {
+        // Spotify Desktop SMTC omits IsPlaybackPositionEnabled (CanSeek = false),
+        // but provides a valid EndTime and supports TryChangePlaybackPositionAsync.
+        var session = new MediaPropertyMapper.SessionShape("Spotify.exe");
+        var mediaProperties = new MediaPropertyMapper.MediaPropertiesShape("Song", "Artist", "Album");
+        var controls = new MediaPropertyMapper.ControlsShape(
+            CanPlay: true, CanPause: true, CanStop: false, CanGoPrevious: true, CanGoNext: true,
+            CanSeek: false, CanChangeShuffle: true, CanChangeAutoRepeatMode: true);
+        var playbackInfo = new MediaPropertyMapper.PlaybackInfoShape(
+            Status: GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing,
+            Controls: controls);
+        var timeline = new MediaPropertyMapper.TimelineShape(
+            Position: TimeSpan.FromSeconds(30),
+            StartTime: TimeSpan.Zero,
+            EndTime: TimeSpan.FromMinutes(3.5),
+            LastUpdated: DateTimeOffset.UtcNow);
+
+        var snapshot = MediaPropertyMapper.BuildSnapshot(
+            sessionShape: session,
+            mediaProperties: mediaProperties,
+            playbackInfo: playbackInfo,
+            timeline: timeline,
+            artwork: null,
+            capturedAt: DateTimeOffset.UtcNow);
+
+        Assert.True(snapshot.Playback.Capabilities.CanSeek, "CanSeek should be enabled when track has a valid duration.");
+    }
 }

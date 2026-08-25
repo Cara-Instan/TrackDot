@@ -114,11 +114,13 @@ public static class MediaPropertyMapper
     /// case we return <see cref="TransportCapabilities.None"/>
     /// rather than throwing.
     /// </remarks>
-    public static TransportCapabilities MapPlaybackControls(ControlsShape? controls)
+    public static TransportCapabilities MapPlaybackControls(ControlsShape? controls, TimeSpan endTime = default)
     {
         if (controls is null)
         {
-            return TransportCapabilities.None;
+            return endTime > TimeSpan.Zero
+                ? new TransportCapabilities(CanPlay: false, CanPause: false, CanStop: false, CanGoPrevious: false, CanGoNext: false, CanSeek: true)
+                : TransportCapabilities.None;
         }
 
         return new TransportCapabilities(
@@ -127,7 +129,7 @@ public static class MediaPropertyMapper
             CanStop:                 controls.CanStop,
             CanGoPrevious:           controls.CanGoPrevious,
             CanGoNext:               controls.CanGoNext,
-            CanSeek:                 controls.CanSeek,
+            CanSeek:                 controls.CanSeek || endTime > TimeSpan.Zero,
             CanChangeShuffle:        controls.CanChangeShuffle,
             CanChangeAutoRepeatMode: controls.CanChangeAutoRepeatMode);
     }
@@ -221,7 +223,7 @@ public static class MediaPropertyMapper
             StartTime:          startTime,
             EndTime:            endTime,
             TimelineUpdatedAt:  timelineUpdatedAt,
-            Capabilities:       MapPlaybackControls(playbackInfo.Controls),
+            Capabilities:       MapPlaybackControls(playbackInfo.Controls, endTime),
             IsShuffleActive:    playbackInfo.IsShuffleActive,
             AutoRepeatMode:     MapAutoRepeatMode(playbackInfo.AutoRepeatMode));
     }

@@ -29,86 +29,19 @@
         </Border>
 
         <!-- Foreground Content Layer (100% Opaque) -->
-        <Grid Width="330" Margin="14">
+        <Grid Width="330" Margin="14,10,14,14">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="84" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            
-            <!-- Header: Artwork + Title / Artist / Source App Badge + Top Action Toolbar -->
-            <Grid Grid.Row="0" MouseLeftButtonDown="Header_MouseLeftButtonDown" Background="Transparent">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="84" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <Border Width="84" Height="84" Background="{DynamicResource ArtworkBackgroundBrush}" CornerRadius="10" ClipToBounds="True">
-                    <Grid>
-                        <!-- Vector Fallback Music Eighth-Note Icon if artwork is null -->
-                        <Path Data="M 12,3 V 13.5 A 3.5,3.5 0 1,1 8.5,10 A 3.5,3.5 0 0,1 12,13.5 V 6 H 18 V 3 H 12 Z" 
-                               Fill="{DynamicResource MutedBrush}" 
-                               Width="28" Height="28" Stretch="Uniform" 
-                               HorizontalAlignment="Center" VerticalAlignment="Center" 
-                               Opacity="0.4" />
-                        <Image Stretch="UniformToFill" AutomationProperties.Name="Album artwork">
-                            <Image.Source>
-                                <Binding Path="Artwork">
-                                    <Binding.FallbackValue>
-                                        <BitmapImage UriSource="pack://application:,,,/TrackDot;component/Assets/PlaceholderArt.png" />
-                                    </Binding.FallbackValue>
-                                </Binding>
-                            </Image.Source>
-                        </Image>
-                    </Grid>
-                </Border>
-                <StackPanel Grid.Column="1" Margin="14,2,6,0" VerticalAlignment="Center">
-                    <controls:MarqueeTextBlock Text="{Binding Title}" FontSize="15" FontWeight="Bold" Height="22"
-                                               ToolTip="{Binding Title}" />
-                    <controls:MarqueeTextBlock Text="{Binding Artist}" Foreground="{DynamicResource MutedBrush}" FontSize="13" Margin="0,3,0,0" Height="20"
-                                               ToolTip="{Binding Artist}" />
-                    
-                    <!-- App Badge (Collapses when SourceAppName is empty or null) -->
-                    <Border HorizontalAlignment="Left" 
-                            Margin="0,8,0,0" 
-                            Padding="6,2" 
-                            CornerRadius="4" 
-                            Background="{DynamicResource BadgeBackgroundBrush}"
-                            BorderBrush="{DynamicResource BadgeBorderBrush}"
-                            BorderThickness="1">
-                        <Border.Style>
-                            <Style TargetType="Border">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SourceAppName}" Value="">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding SourceAppName}" Value="{x:Null}">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Border.Style>
-                        <TextBlock Text="{Binding SourceAppName}" 
-                                   FontSize="10" 
-                                   FontWeight="SemiBold">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding HasDynamicAccent}" Value="True">
-                                            <Setter Property="Foreground" Value="{Binding DynamicAccentBrush}" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </Border>
-                </StackPanel>
 
-                <!-- Top Header Action Buttons Toolbar (Pin, Keyboard, Settings, About) -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,0,0,0">
+            <!-- Top Header Action Buttons Toolbar (Pin, Lyrics, Lyrics HUD, Hotkeys, Settings, About) -->
+            <Grid Grid.Row="0" Margin="0,0,0,8" MouseLeftButtonDown="Header_MouseLeftButtonDown" Background="Transparent">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <!-- Pin / Keep Window Open Button -->
                     <Button x:Name="PinButton"
                             Style="{StaticResource HeaderActionButton}"
@@ -173,16 +106,83 @@
                 </StackPanel>
             </Grid>
 
+            <!-- Header: Artwork + Title / Artist / Source App Badge -->
+            <Grid Grid.Row="1" MouseLeftButtonDown="Header_MouseLeftButtonDown" Background="Transparent">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="84" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Width="84" Height="84" Background="{DynamicResource ArtworkBackgroundBrush}" CornerRadius="10" ClipToBounds="True">
+                    <Grid>
+                        <!-- Vector Fallback Music Eighth-Note Icon if artwork is null -->
+                        <Path Data="M 12,3 V 13.5 A 3.5,3.5 0 1,1 8.5,10 A 3.5,3.5 0 0,1 12,13.5 V 6 H 18 V 3 H 12 Z" 
+                               Fill="{DynamicResource MutedBrush}" 
+                               Width="28" Height="28" Stretch="Uniform" 
+                               HorizontalAlignment="Center" VerticalAlignment="Center" 
+                               Opacity="0.4" />
+                        <Image Stretch="UniformToFill" AutomationProperties.Name="Album artwork">
+                            <Image.Source>
+                                <Binding Path="Artwork">
+                                    <Binding.FallbackValue>
+                                        <BitmapImage UriSource="pack://application:,,,/TrackDot;component/Assets/PlaceholderArt.png" />
+                                    </Binding.FallbackValue>
+                                </Binding>
+                            </Image.Source>
+                        </Image>
+                    </Grid>
+                </Border>
+                <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
+                    <controls:MarqueeTextBlock Text="{Binding Title}" FontSize="15" FontWeight="Bold" Height="22"
+                                               ToolTip="{Binding Title}" />
+                    <controls:MarqueeTextBlock Text="{Binding Artist}" Foreground="{DynamicResource MutedBrush}" FontSize="13" Margin="0,3,0,0" Height="20"
+                                               ToolTip="{Binding Artist}" />
+                    
+                    <!-- App Badge (Collapses when SourceAppName is empty or null) -->
+                    <Border HorizontalAlignment="Left" 
+                            Margin="0,8,0,0" 
+                            Padding="6,2" 
+                            CornerRadius="4" 
+                            Background="{DynamicResource BadgeBackgroundBrush}"
+                            BorderBrush="{DynamicResource BadgeBorderBrush}"
+                            BorderThickness="1">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SourceAppName}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding SourceAppName}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Text="{Binding SourceAppName}" 
+                                   FontSize="10" 
+                                   FontWeight="SemiBold">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasDynamicAccent}" Value="True">
+                                            <Setter Property="Foreground" Value="{Binding DynamicAccentBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Border>
+                </StackPanel>
+            </Grid>
+
             <!-- Seek Slider (replaces read-only ProgressBar) -->
-            <Grid Grid.Row="1" Margin="0,12,0,0">
+            <Grid Grid.Row="2" Margin="0,12,0,0">
                 <Slider x:Name="SeekSlider"
                         Minimum="0"
                         Maximum="{Binding DurationSeconds, Mode=OneWay}"
                         Value="{Binding PositionSeconds, Mode=OneWay}"
                         IsMoveToPointEnabled="True"
                         IsEnabled="{Binding CanSeek}"
-                        PreviewMouseLeftButtonDown="SeekSlider_PreviewMouseLeftButtonDown"
-                        PreviewMouseLeftButtonUp="SeekSlider_MouseLeftButtonUp"
                         MouseMove="SeekSlider_MouseMove"
                         MouseLeave="SeekSlider_MouseLeave"
                         AutomationProperties.Name="Track progress">
@@ -199,7 +199,7 @@
             </Grid>
 
             <!-- Transport Controls Row -->
-            <Grid Grid.Row="2" Margin="0,10,0,2">
+            <Grid Grid.Row="3" Margin="0,10,0,2">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="42" />
                     <ColumnDefinition Width="*" />
@@ -234,7 +234,7 @@
                                                 <Condition Binding="{Binding IsShuffleActive}" Value="True" />
                                                 <Condition Binding="{Binding HasDynamicAccent}" Value="True" />
                                             </MultiDataTrigger.Conditions>
-                                            <Setter Property="Fill" Value="{Binding DynamicAccentBrush}" />
+                                             <Setter Property="Fill" Value="{Binding DynamicAccentBrush}" />
                                         </MultiDataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -318,7 +318,7 @@
             </Grid>
 
             <!-- Session Picker Row (only shown when 2+ SMTC sources are active) -->
-            <Border Grid.Row="3"
+            <Border Grid.Row="4"
                     Margin="0,10,0,0"
                     Visibility="{Binding HasMultipleSessions, Converter={StaticResource BoolToVis}}">
                 <StackPanel>
@@ -351,7 +351,7 @@
             </Border>
 
             <!-- Volume / Mute Row (only shown when a media session is active) -->
-            <Grid Grid.Row="4"
+            <Grid Grid.Row="5"
                   Margin="0,10,0,2"
                   Visibility="{Binding HasMedia, Converter={StaticResource BoolToVis}}"
                   ToolTip="It will decrease/increase audio volume on System&gt;Sound&gt;Volume Mixer&gt;Apps">

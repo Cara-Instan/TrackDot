@@ -394,7 +394,7 @@ public sealed class MediaControllerService : IMediaControllerService
                 CanStop:                 c.IsStopEnabled,
                 CanGoPrevious:           c.IsPreviousEnabled,
                 CanGoNext:               c.IsNextEnabled,
-                CanSeek:                 c.IsPlaybackPositionEnabled,
+                CanSeek:                 c.IsPlaybackPositionEnabled || (timeline != null && timeline.EndTime > TimeSpan.Zero),
                 CanChangeShuffle:        c.IsShuffleEnabled,
                 CanChangeAutoRepeatMode: c.IsRepeatEnabled)
             : null;
@@ -637,6 +637,7 @@ public sealed class MediaControllerService : IMediaControllerService
     {
         if (_disposed) return;
 
+        var previous = Volatile.Read(ref _currentSnapshot);
         var controlsShape = info.Controls is { } c
             ? new MediaPropertyMapper.ControlsShape(
                 CanPlay:                 c.IsPlayEnabled,
@@ -644,7 +645,7 @@ public sealed class MediaControllerService : IMediaControllerService
                 CanStop:                 c.IsStopEnabled,
                 CanGoPrevious:           c.IsPreviousEnabled,
                 CanGoNext:               c.IsNextEnabled,
-                CanSeek:                 c.IsPlaybackPositionEnabled,
+                CanSeek:                 c.IsPlaybackPositionEnabled || (previous.Playback.EndTime > TimeSpan.Zero),
                 CanChangeShuffle:        c.IsShuffleEnabled,
                 CanChangeAutoRepeatMode: c.IsRepeatEnabled)
             : null;
@@ -655,7 +656,6 @@ public sealed class MediaControllerService : IMediaControllerService
             IsShuffleActive: info.IsShuffleActive,
             AutoRepeatMode:  info.AutoRepeatMode);
 
-        var previous = Volatile.Read(ref _currentSnapshot);
         var timelineShape = new MediaPropertyMapper.TimelineShape(
             Position:    previous.Playback.Position,
             StartTime:   previous.Playback.StartTime,
@@ -696,7 +696,7 @@ public sealed class MediaControllerService : IMediaControllerService
                 CanStop:                 previous.Playback.Capabilities.CanStop,
                 CanGoPrevious:           previous.Playback.Capabilities.CanGoPrevious,
                 CanGoNext:               previous.Playback.Capabilities.CanGoNext,
-                CanSeek:                 previous.Playback.Capabilities.CanSeek,
+                CanSeek:                 previous.Playback.Capabilities.CanSeek || (timeline.EndTime > TimeSpan.Zero),
                 CanChangeShuffle:        previous.Playback.Capabilities.CanChangeShuffle,
                 CanChangeAutoRepeatMode: previous.Playback.Capabilities.CanChangeAutoRepeatMode),
             IsShuffleActive: previous.Playback.IsShuffleActive,

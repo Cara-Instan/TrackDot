@@ -758,6 +758,67 @@ public sealed class MainViewModelTests
         Assert.Equal("Repeat: One track", vm.RepeatToolTip);
     }
 
+    [Fact]
+    public void CanSeek_is_true_when_duration_is_positive_even_if_caps_CanSeek_is_false()
+    {
+        var (vm, svc, _, _) = BuildViewModel();
+        var caps = new TransportCapabilities(
+            CanPlay: true, CanPause: true, CanStop: false, CanGoPrevious: true, CanGoNext: true,
+            CanSeek: false, CanChangeShuffle: false, CanChangeAutoRepeatMode: false);
+
+        var snap = new MediaSessionSnapshot(
+            SourceAppUserModelId: "Spotify.exe",
+            Title: "Title",
+            Artist: "Artist",
+            AlbumTitle: "Album",
+            Artwork: null,
+            Playback: new PlaybackSnapshot(
+                State: MediaPlaybackState.Playing,
+                Position: TimeSpan.FromSeconds(10),
+                StartTime: TimeSpan.Zero,
+                EndTime: TimeSpan.FromMinutes(3),
+                TimelineUpdatedAt: DateTimeOffset.UtcNow,
+                Capabilities: caps));
+
+        svc.Publish(snap);
+
+        Assert.True(vm.CanSeek);
+        Assert.True(vm.SeekCommand.CanExecute(45.0));
+    }
+
+    [Fact]
+    public void IsUserSeeking_property_prevents_tick_from_raising_PositionSeconds_change()
+    {
+        var (vm, svc, ticker, clock) = BuildViewModel();
+        var snap = MakeSnapshot(
+            state: MediaPlaybackState.Playing,
+            position: TimeSpan.FromSeconds(10),
+            endTime: TimeSpan.FromMinutes(3),
+            caps: AllEnabled());
+        svc.Publish(snap);
+        vm.IsVisible = true;
+
+        var changedProperties = new List<string>();
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != null) changedProperties.Add(e.PropertyName);
+        };
+
+        vm.IsUserSeeking = true;
+        changedProperties.Clear();
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        ticker.Fire();
+
+        Assert.DoesNotContain(nameof(MainViewModel.PositionSeconds), changedProperties);
+
+        vm.IsUserSeeking = false;
+        clock.Advance(TimeSpan.FromSeconds(1));
+        ticker.Fire();
+
+        Assert.Contains(nameof(MainViewModel.PositionSeconds), changedProperties);
+    }
+
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
