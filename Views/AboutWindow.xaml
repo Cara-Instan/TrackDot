@@ -149,7 +149,7 @@
                         </TextBlock>
                     </Grid>
 
-                    <Grid>
+                    <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="90" />
                             <ColumnDefinition Width="*" />
@@ -158,6 +158,32 @@
                         <TextBlock Grid.Column="1" FontSize="12">
                             <Hyperlink NavigateUri="https://github.com/Cara-Instan/TrackDot/blob/main/LICENSE" RequestNavigate="Hyperlink_RequestNavigate">
                                 MIT License
+                            </Hyperlink>
+                        </TextBlock>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Terms:" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextBrush}" />
+                        <TextBlock Grid.Column="1" FontSize="12">
+                            <Hyperlink NavigateUri="https://github.com/Cara-Instan/TrackDot/blob/main/TERMS.md" RequestNavigate="Hyperlink_RequestNavigate">
+                                Terms of Service
+                            </Hyperlink>
+                        </TextBlock>
+                    </Grid>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Privacy:" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextBrush}" />
+                        <TextBlock Grid.Column="1" FontSize="12">
+                            <Hyperlink NavigateUri="https://github.com/Cara-Instan/TrackDot/blob/main/PRIVACY.md" RequestNavigate="Hyperlink_RequestNavigate">
+                                Privacy Policy
                             </Hyperlink>
                         </TextBlock>
                     </Grid>

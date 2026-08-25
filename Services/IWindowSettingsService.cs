@@ -150,6 +150,48 @@ public interface IWindowSettingsService
     void ResetHotkeyBindingsToDefault();
 
     /// <summary>
+    /// <see langword="true"/> when Discord Rich Presence (RPC) integration is enabled.
+    /// Default is <see langword="false"/> (opt-in for privacy).
+    /// </summary>
+    bool EnableDiscordRpc { get; set; }
+
+    /// <summary>
+    /// <see langword="true"/> when elapsed/remaining track timestamps should be broadcasted to Discord.
+    /// </summary>
+    bool DiscordShowTimestamps { get; set; }
+
+    /// <summary>
+    /// <see langword="true"/> when album title should be broadcasted to Discord.
+    /// </summary>
+    bool DiscordShowAlbum { get; set; }
+
+    /// <summary>
+    /// <see langword="true"/> when paused state should be broadcasted to Discord.
+    /// </summary>
+    bool DiscordShowPauseStatus { get; set; }
+
+    /// <summary>
+    /// Discovered and registered source applications with their individual Discord sharing toggles.
+    /// </summary>
+    IReadOnlyList<TrackDot.Models.SourceAppSetting> RegisteredSourceApps { get; }
+
+    /// <summary>
+    /// Registers a newly discovered source app if not already present (defaulting to disabled),
+    /// or updates the display name if changed.
+    /// </summary>
+    TrackDot.Models.SourceAppSetting RegisterOrUpdateSourceApp(string aumid, string displayName);
+
+    /// <summary>
+    /// Sets whether a specific source application is permitted to broadcast to Discord Rich Presence.
+    /// </summary>
+    void SetSourceAppDiscordEnabled(string aumid, bool enabled);
+
+    /// <summary>
+    /// Clears all registered source applications from settings.
+    /// </summary>
+    void ClearRegisteredSourceApps();
+
+    /// <summary>
     /// Event raised when any window setting changes.
     /// </summary>
     event EventHandler? SettingsChanged;

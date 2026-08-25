@@ -201,6 +201,72 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>
+    /// True when Discord Rich Presence is enabled (default: false).
+    /// </summary>
+    public bool EnableDiscordRpc
+    {
+        get => _windowSettings?.EnableDiscordRpc ?? false;
+        set
+        {
+            if (_windowSettings == null || _windowSettings.EnableDiscordRpc == value) return;
+            _windowSettings.EnableDiscordRpc = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// True when elapsed/remaining timestamps are broadcasted to Discord.
+    /// </summary>
+    public bool DiscordShowTimestamps
+    {
+        get => _windowSettings?.DiscordShowTimestamps ?? true;
+        set
+        {
+            if (_windowSettings == null || _windowSettings.DiscordShowTimestamps == value) return;
+            _windowSettings.DiscordShowTimestamps = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// True when album title is broadcasted to Discord.
+    /// </summary>
+    public bool DiscordShowAlbum
+    {
+        get => _windowSettings?.DiscordShowAlbum ?? true;
+        set
+        {
+            if (_windowSettings == null || _windowSettings.DiscordShowAlbum == value) return;
+            _windowSettings.DiscordShowAlbum = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// True when paused status is broadcasted to Discord.
+    /// </summary>
+    public bool DiscordShowPauseStatus
+    {
+        get => _windowSettings?.DiscordShowPauseStatus ?? true;
+        set
+        {
+            if (_windowSettings == null || _windowSettings.DiscordShowPauseStatus == value) return;
+            _windowSettings.DiscordShowPauseStatus = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Discovered applications list for per-app Discord Rich Presence sharing toggles.
+    /// </summary>
+    public System.Collections.ObjectModel.ObservableCollection<SourceAppItemViewModel> SourceAppItems { get; } = new();
+
+    /// <summary>
+    /// True when at least one source application has been discovered and registered.
+    /// </summary>
+    public bool HasSourceApps => SourceAppItems.Count > 0;
+
+    /// <summary>
     /// Configurable list of global hotkey items.
     /// </summary>
     public System.Collections.ObjectModel.ObservableCollection<HotkeySettingItemViewModel> HotkeyItems { get; } = new();
@@ -288,6 +354,57 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>The registry path used for the Run-key entry.</summary>
     public string RegistryKeyPath => @"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 
+    /// <summary>
+    /// Resets / clears all discovered source apps.
+    /// </summary>
+    public void ClearSourceApps()
+    {
+        _windowSettings?.ClearRegisteredSourceApps();
+        PopulateSourceAppItems();
+    }
+
+    public void RefreshSourceAppItems()
+    {
+        if (_windowSettings == null) return;
+        var apps = _windowSettings.RegisteredSourceApps;
+        
+        // If counts differ or items changed, repopulate
+        if (apps.Count != SourceAppItems.Count || !apps.Select(a => a.Aumid).SequenceEqual(SourceAppItems.Select(s => s.Aumid)))
+        {
+            PopulateSourceAppItems();
+            return;
+        }
+
+        foreach (var item in SourceAppItems)
+        {
+            var matched = apps.FirstOrDefault(a => a.Aumid.Equals(item.Aumid, StringComparison.OrdinalIgnoreCase));
+            if (matched != null)
+            {
+                item.UpdateState(matched.DiscordRpcEnabled);
+            }
+        }
+        OnPropertyChanged(nameof(HasSourceApps));
+    }
+
+    private void PopulateSourceAppItems()
+    {
+        SourceAppItems.Clear();
+        if (_windowSettings == null) return;
+
+        var apps = _windowSettings.RegisteredSourceApps;
+        foreach (var app in apps)
+        {
+            var item = new SourceAppItemViewModel(app.Aumid, app.DisplayName, app.DiscordRpcEnabled, OnToggleSourceApp);
+            SourceAppItems.Add(item);
+        }
+        OnPropertyChanged(nameof(HasSourceApps));
+    }
+
+    private void OnToggleSourceApp(string aumid, bool enabled)
+    {
+        _windowSettings?.SetSourceAppDiscordEnabled(aumid, enabled);
+    }
+
     /// <summary>Constructs a view-model bound to startup, theme, and window settings services.</summary>
     public SettingsViewModel(
         IStartupService startup,
@@ -306,6 +423,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         }
 
         PopulateHotkeyItems();
+        PopulateSourceAppItems();
     }
 
     private void OnWindowSettingsChanged(object? sender, EventArgs e)
@@ -314,7 +432,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(OpacityDisplayText));
         OnPropertyChanged(nameof(EnableGlobalHotkeys));
         OnPropertyChanged(nameof(EnableDynamicTinting));
+        OnPropertyChanged(nameof(EnableDiscordRpc));
+        OnPropertyChanged(nameof(DiscordShowTimestamps));
+        OnPropertyChanged(nameof(DiscordShowAlbum));
+        OnPropertyChanged(nameof(DiscordShowPauseStatus));
         RefreshHotkeyItems();
+        RefreshSourceAppItems();
     }
 
     /// <inheritdoc/>
@@ -333,6 +456,53 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
             _windowSettings.SettingsChanged -= OnWindowSettingsChanged;
         }
     }
+}
+
+/// <summary>
+/// View-model representing a discovered source application with its Discord sharing toggle.
+/// </summary>
+public sealed class SourceAppItemViewModel : INotifyPropertyChanged
+{
+    private readonly Action<string, bool> _toggleAction;
+    private bool _discordRpcEnabled;
+
+    public string Aumid { get; }
+    public string DisplayName { get; }
+
+    public bool DiscordRpcEnabled
+    {
+        get => _discordRpcEnabled;
+        set
+        {
+            if (_discordRpcEnabled == value) return;
+            _discordRpcEnabled = value;
+            OnPropertyChanged();
+            _toggleAction(Aumid, value);
+        }
+    }
+
+    public SourceAppItemViewModel(
+        string aumid,
+        string displayName,
+        bool discordRpcEnabled,
+        Action<string, bool> toggleAction)
+    {
+        Aumid = aumid;
+        DisplayName = displayName;
+        _discordRpcEnabled = discordRpcEnabled;
+        _toggleAction = toggleAction;
+    }
+
+    public void UpdateState(bool enabled)
+    {
+        if (_discordRpcEnabled == enabled) return;
+        _discordRpcEnabled = enabled;
+        OnPropertyChanged(nameof(DiscordRpcEnabled));
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void OnPropertyChanged([CallerMemberName] string? name = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
 
 /// <summary>

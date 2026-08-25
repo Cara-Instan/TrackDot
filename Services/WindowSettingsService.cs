@@ -17,12 +17,22 @@ public sealed class WindowSettingsService : IWindowSettingsService
     private const string DynamicTintingValueName = "EnableDynamicTinting";
     private const string GlobalHotkeysValueName = "EnableGlobalHotkeys";
     private const string HotkeysPrefix = "Hotkey_";
+    private const string EnableDiscordRpcValueName = "EnableDiscordRpc";
+    private const string DiscordShowTimestampsValueName = "DiscordShowTimestamps";
+    private const string DiscordShowAlbumValueName = "DiscordShowAlbum";
+    private const string DiscordShowPauseStatusValueName = "DiscordShowPauseStatus";
+    private const string RegisteredSourceAppsValueName = "RegisteredSourceApps";
 
     private bool _isPinned;
     private int _opacityPercent;
     private bool _enableGlobalHotkeys;
     private bool _enableDynamicTinting;
+    private bool _enableDiscordRpc;
+    private bool _discordShowTimestamps;
+    private bool _discordShowAlbum;
+    private bool _discordShowPauseStatus;
     private readonly Dictionary<TrackDot.Models.HotkeyAction, TrackDot.Models.HotkeyBinding> _hotkeyBindings = new();
+    private readonly Dictionary<string, TrackDot.Models.SourceAppSetting> _registeredSourceApps = new(StringComparer.OrdinalIgnoreCase);
 
     /// <inheritdoc/>
     public bool EnableDynamicTinting
@@ -436,6 +446,155 @@ public sealed class WindowSettingsService : IWindowSettingsService
         }
     }
 
+    /// <inheritdoc/>
+    public bool EnableDiscordRpc
+    {
+        get => _enableDiscordRpc;
+        set
+        {
+            if (_enableDiscordRpc == value) return;
+            _enableDiscordRpc = value;
+            SaveValue(EnableDiscordRpcValueName, value ? 1 : 0, d => d.EnableDiscordRpc = value);
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool DiscordShowTimestamps
+    {
+        get => _discordShowTimestamps;
+        set
+        {
+            if (_discordShowTimestamps == value) return;
+            _discordShowTimestamps = value;
+            SaveValue(DiscordShowTimestampsValueName, value ? 1 : 0, d => d.DiscordShowTimestamps = value);
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool DiscordShowAlbum
+    {
+        get => _discordShowAlbum;
+        set
+        {
+            if (_discordShowAlbum == value) return;
+            _discordShowAlbum = value;
+            SaveValue(DiscordShowAlbumValueName, value ? 1 : 0, d => d.DiscordShowAlbum = value);
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool DiscordShowPauseStatus
+    {
+        get => _discordShowPauseStatus;
+        set
+        {
+            if (_discordShowPauseStatus == value) return;
+            _discordShowPauseStatus = value;
+            SaveValue(DiscordShowPauseStatusValueName, value ? 1 : 0, d => d.DiscordShowPauseStatus = value);
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<TrackDot.Models.SourceAppSetting> RegisteredSourceApps
+    {
+        get
+        {
+            lock (_registeredSourceApps)
+            {
+                return _registeredSourceApps.Values.OrderBy(a => a.DisplayName).ToList();
+            }
+        }
+    }
+
+    /// <inheritdoc/>
+    public TrackDot.Models.SourceAppSetting RegisterOrUpdateSourceApp(string aumid, string displayName)
+    {
+        if (string.IsNullOrWhiteSpace(aumid))
+            throw new ArgumentException("AUMID cannot be null or whitespace", nameof(aumid));
+
+        bool changed = false;
+        TrackDot.Models.SourceAppSetting result;
+        lock (_registeredSourceApps)
+        {
+            if (_registeredSourceApps.TryGetValue(aumid, out var existing))
+            {
+                if (!string.IsNullOrWhiteSpace(displayName) && existing.DisplayName != displayName)
+                {
+                    result = existing with { DisplayName = displayName };
+                    _registeredSourceApps[aumid] = result;
+                    changed = true;
+                }
+                else
+                {
+                    result = existing;
+                }
+            }
+            else
+            {
+                var cleanName = string.IsNullOrWhiteSpace(displayName)
+                    ? TrackDot.ViewModels.MainViewModelHelpers.FormatAppName(aumid)
+                    : displayName;
+                result = TrackDot.Models.SourceAppSetting.CreateDefault(aumid, cleanName);
+                _registeredSourceApps[aumid] = result;
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            SaveSourceApps();
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc/>
+    public void SetSourceAppDiscordEnabled(string aumid, bool enabled)
+    {
+        if (string.IsNullOrWhiteSpace(aumid)) return;
+
+        bool changed = false;
+        lock (_registeredSourceApps)
+        {
+            if (_registeredSourceApps.TryGetValue(aumid, out var existing))
+            {
+                if (existing.DiscordRpcEnabled != enabled)
+                {
+                    _registeredSourceApps[aumid] = existing with { DiscordRpcEnabled = enabled };
+                    changed = true;
+                }
+            }
+            else
+            {
+                var name = TrackDot.ViewModels.MainViewModelHelpers.FormatAppName(aumid);
+                _registeredSourceApps[aumid] = new TrackDot.Models.SourceAppSetting(aumid, name, enabled, DateTime.UtcNow);
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            SaveSourceApps();
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <inheritdoc/>
+    public void ClearRegisteredSourceApps()
+    {
+        lock (_registeredSourceApps)
+        {
+            _registeredSourceApps.Clear();
+        }
+        SaveSourceApps();
+        SettingsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>
     /// Constructs the window settings service. Reads initial values
     /// from registry when parameters are omitted.
@@ -453,7 +612,12 @@ public sealed class WindowSettingsService : IWindowSettingsService
         bool? initialLyricsHudShowTranslation = null,
         bool? initialLyricsHudShowFurigana = null,
         double? initialLyricsHudFontSize = null,
-        int? initialLyricsHudOpacityPercent = null)
+        int? initialLyricsHudOpacityPercent = null,
+        bool? initialEnableDiscordRpc = null,
+        bool? initialDiscordShowTimestamps = null,
+        bool? initialDiscordShowAlbum = null,
+        bool? initialDiscordShowPauseStatus = null,
+        IReadOnlyList<TrackDot.Models.SourceAppSetting>? initialRegisteredSourceApps = null)
     {
         _isPinned = initialPinned ?? LoadPinToTop();
         _opacityPercent = Math.Clamp(initialOpacity ?? LoadOpacityPercent(), 20, 100);
@@ -481,6 +645,27 @@ public sealed class WindowSettingsService : IWindowSettingsService
         _lyricsHudShowFurigana = initialLyricsHudShowFurigana ?? LoadBoolValue("LyricsHudShowFurigana", true, d => d.LyricsHudShowFurigana);
         _lyricsHudShowTranslation = initialLyricsHudShowTranslation ?? LoadBoolValue("LyricsHudShowTranslation", true, d => d.LyricsHudShowTranslation);
 
+        _enableDiscordRpc = initialEnableDiscordRpc ?? LoadBoolValue(EnableDiscordRpcValueName, false, d => d.EnableDiscordRpc);
+        _discordShowTimestamps = initialDiscordShowTimestamps ?? LoadBoolValue(DiscordShowTimestampsValueName, true, d => d.DiscordShowTimestamps);
+        _discordShowAlbum = initialDiscordShowAlbum ?? LoadBoolValue(DiscordShowAlbumValueName, true, d => d.DiscordShowAlbum);
+        _discordShowPauseStatus = initialDiscordShowPauseStatus ?? LoadBoolValue(DiscordShowPauseStatusValueName, true, d => d.DiscordShowPauseStatus);
+
+        if (initialRegisteredSourceApps != null)
+        {
+            lock (_registeredSourceApps)
+            {
+                foreach (var app in initialRegisteredSourceApps)
+                {
+                    if (!string.IsNullOrWhiteSpace(app.Aumid))
+                        _registeredSourceApps[app.Aumid] = app;
+                }
+            }
+        }
+        else
+        {
+            LoadInitialSourceApps();
+        }
+
         if (initialHotkeys != null)
         {
             lock (_hotkeyBindings)
@@ -495,6 +680,59 @@ public sealed class WindowSettingsService : IWindowSettingsService
         {
             LoadInitialHotkeys();
         }
+    }
+
+    private void LoadInitialSourceApps()
+    {
+        lock (_registeredSourceApps)
+        {
+            _registeredSourceApps.Clear();
+            if (PortableMode.IsPortable)
+            {
+                var data = LoadPortableSettings();
+                if (data.RegisteredSourceApps != null)
+                {
+                    foreach (var app in data.RegisteredSourceApps)
+                    {
+                        if (!string.IsNullOrWhiteSpace(app.Aumid))
+                            _registeredSourceApps[app.Aumid] = app;
+                    }
+                    return;
+                }
+            }
+            else
+            {
+                try
+                {
+                    using var key = Registry.CurrentUser.OpenSubKey(TrackDotKeyPath);
+                    var json = key?.GetValue(RegisteredSourceAppsValueName) as string;
+                    if (!string.IsNullOrWhiteSpace(json))
+                    {
+                        var list = System.Text.Json.JsonSerializer.Deserialize<List<TrackDot.Models.SourceAppSetting>>(json);
+                        if (list != null)
+                        {
+                            foreach (var app in list)
+                            {
+                                if (!string.IsNullOrWhiteSpace(app.Aumid))
+                                    _registeredSourceApps[app.Aumid] = app;
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+        }
+    }
+
+    private void SaveSourceApps()
+    {
+        List<TrackDot.Models.SourceAppSetting> list;
+        lock (_registeredSourceApps)
+        {
+            list = _registeredSourceApps.Values.ToList();
+        }
+        var json = System.Text.Json.JsonSerializer.Serialize(list);
+        SaveStringValue(RegisteredSourceAppsValueName, json, d => d.RegisteredSourceApps = list);
     }
 
     private void LoadInitialHotkeys()
@@ -553,6 +791,11 @@ public sealed class WindowSettingsService : IWindowSettingsService
         public double LyricsHudFontSize { get; set; } = 22.0;
         public bool LyricsHudShowFurigana { get; set; } = true;
         public bool LyricsHudShowTranslation { get; set; } = true;
+        public bool EnableDiscordRpc { get; set; } = false;
+        public bool DiscordShowTimestamps { get; set; } = true;
+        public bool DiscordShowAlbum { get; set; } = true;
+        public bool DiscordShowPauseStatus { get; set; } = true;
+        public List<TrackDot.Models.SourceAppSetting> RegisteredSourceApps { get; set; } = new();
     }
 
     private static string PortableSettingsPath => System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");

@@ -46,6 +46,7 @@ public partial class App : Application
     private LyricsWindow? _lyricsWindow;
     private LyricsHudViewModel? _lyricsHudViewModel;
     private LyricsHudWindow? _lyricsHudWindow;
+    private DiscordRpcService? _discordRpcService;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -96,6 +97,9 @@ public partial class App : Application
         _lyricsHudViewModel = new LyricsHudViewModel(_lyricsViewModel, _mediaService, _windowSettingsService);
         _lyricsHudWindow = new LyricsHudWindow();
         _lyricsHudWindow.SetViewModel(_lyricsHudViewModel, _lyricsViewModel, _windowSettingsService, onOpenFullLyrics: () => _lyricsWindow?.ShowLyrics());
+
+        // Step 3b: Discord Rich Presence service.
+        _discordRpcService = new DiscordRpcService(_mediaService, _windowSettingsService);
 
         _mainWindow = new MainWindow { DataContext = _viewModel };
         _mainWindow.SetViewModel(_viewModel);
@@ -194,6 +198,9 @@ public partial class App : Application
 
         try { _globalHotkeyService?.Dispose(); } catch { /* swallow */ }
         _globalHotkeyService = null;
+
+        try { _discordRpcService?.Dispose(); } catch { /* swallow */ }
+        _discordRpcService = null;
 
         try { _tray?.Dispose(); } catch { /* swallow — best effort */ }
         _tray = null;

@@ -194,6 +194,11 @@ public partial class SettingsWindow : Window
         _viewModel?.ResetHotkeysToDefault();
     }
 
+    private void OnClearSourceAppsClicked(object sender, RoutedEventArgs e)
+    {
+        _viewModel?.ClearSourceApps();
+    }
+
     private void OnCloseClicked(object sender, RoutedEventArgs e)
     {
         CancelAnyRecording();
